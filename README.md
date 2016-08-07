@@ -66,7 +66,8 @@ to illustrate this, lets say the metadata length identifier will be located in i
  ---------------------------------------------------------------------------
             ^                           ^                              ^
             |                           |                              |
-[16000] meta-data-lenght             nullbyte     [16000 + meta-data-lenght * 16 + nullbyte] meta-data-lenght
+         [16000] \                   nullbyte     [16000 + meta-data-lenght * 16 + nullbyte] \
+          meta-data-lenght                         meta-data-lenght
 
 ```
 
