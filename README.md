@@ -6,15 +6,15 @@ the tiny audio player daemon - /o'zapft is/
 ## debian
 ```
 sudo apt-get install \
-    gcc \
-    libao-dev \
-    libcurl4-nss-dev \
-    libjansson-dev \
-    libmpg123-dev \
-    libmrss0-dev \
-    libsqlite3-dev \
-    make \
-    sqlite3
+  gcc \
+  libao-dev \
+  libcurl4-nss-dev \
+  libjansson-dev \
+  libmpg123-dev \
+  libmrss0-dev \
+  libsqlite3-dev \
+  make \
+  sqlite3
 ```
 
 ## opensuse
@@ -22,15 +22,15 @@ sudo apt-get install \
 sudo zypper addrepo http://download.opensuse.org/repositories/devel:/libraries:/c_c++/openSUSE_Factory/devel:libraries:c_c++.repo # needed for libmrss
 sudo zypper refresh
 sudo zypper install \
-    alsa-devel \
-    gcc \
-    libao-devel \
-    libjansson-devel \
-    libmrss-devel \
-    make \
-    scons # makes it easier to include non package mpg123 \
-    sqlite3 # for interacting with the database \
-    sqlite3-devel
+  alsa-devel \
+  gcc \
+  libao-devel \
+  libjansson-devel \
+  libmrss-devel \
+  make \
+  scons # makes it easier to include non package mpg123 \
+  sqlite3 # for interacting with the database \
+  sqlite3-devel
 ```
 
 it seems that there is no standard package for mpg123, so this needs to be built manually.
