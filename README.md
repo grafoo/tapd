@@ -58,15 +58,15 @@ this specifies the the byte location of the metadata length information in the s
 to calculate the actual size of metadata bytes, the value at icy-metaint intervals needs to be multiplied by 16.
 if there is metadata, at the end of the metadata also a null byte will be added. if there is no metadata the mp3 data will start right after the icy-metaint byte.
 
-to illustrate this, lets say the metadata length identifier will be located in intervals of 16000 bytes (meaning icy-metaint was 16000), then the stream will look something like this
+to illustrate this, lets say the metadata length identifier will be located in intervals of 16000 bytes (meaning icy-metaint was 16000) and the first occurrence contains metadata, then the stream will look something like this
 
 ```
- -------------------------------------------------------------------
-| MP3-DATA | |    META-DATA    | |          MP3-DATA          | |  
- -------------------------------------------------------------------
-            ^                   ^                              ^
-            |                   |                              |
-16000: meta-data-lenght      nullbyte     16000 + meta-data-lenght*16 + nullbyte: meta-data-lenght
+ ---------------------------------------------------------------------------
+| MP3-DATA | |        META-DATA        | |          MP3-DATA          | |
+ ---------------------------------------------------------------------------
+            ^                           ^                              ^
+            |                           |                              |
+[16000] meta-data-lenght             nullbyte     [16000 + meta-data-lenght * 16 + nullbyte] meta-data-lenght
 
 ```
 
