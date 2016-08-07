@@ -34,8 +34,9 @@ sudo zypper install \
 ```
 
 it seems that there is no standard package for mpg123, so this needs to be built manually.
-the sources can be found on e.g. `https://www.mpg123.de/download/mpg123-1.23.6.tar.bz2`
-configure the makefile accordingly to install all targets to the dep directory of this repo
+the sources can be found on e.g. https://www.mpg123.de/download/mpg123-1.23.6.tar.bz2
+
+configure the makefile accordingly to install all targets to the dep directory of this repo.
 
 after building mpg123 dependecies tapd can be started like e.g. `LD_LIBRARY_PATH=./dep/lib64/ ./tapd -s`
 
@@ -51,7 +52,9 @@ http://www.autistici.org/bakunin/libmrss/doc/
 ### metadata
 shoutcast's streaming protocol (and complying ones like icecast's) uses metadata tags embedded in the stream.
 to receive those a http header `Icy-MetaData:1` needs to be added to the request. this can be achieved with e.g. `curl -H "Icy-MetaData:1" http://neo.m2stream.fr:8000/m280-128.mp3 -D header`. if everything went well the server will add `icy-metaint` to the respond headers.
+
 this specifies the the byte location of the metadata length information in the stream and can either be non zero which means that there is metada or zero meaning that currently there is none.
+
 to calculate the actual size of metadata bytes, the value at icy-metaint intervals needs to be multiplied by 16.
 if there is metadata, at the end of the metadata also a null byte will be added. if there is no metadata the mp3 data will start right after the icy-metaint byte.
 
@@ -67,7 +70,7 @@ to illustrate this, lets say the metadata length identifier will be located in i
 
 ```
 
-further information on the protocol can be found on `http://www.smackfu.com/stuff/programming/shoutcast.html`.
+further information on the protocol can be found on http://www.smackfu.com/stuff/programming/shoutcast.html.
 
 #todos
 
