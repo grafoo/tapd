@@ -57,12 +57,15 @@ if there is metadata, at the end of the metadata also a null byte will be added.
 
 to illustrate this, lets say the metadata length identifier will be located in intervals of 16000 bytes (meaning icy-metaint was 16000), then the stream will look something like this
 
+```
  -------------------------------------------------------------------
 | MP3-DATA | |    META-DATA    | |          MP3-DATA          | |  
  -------------------------------------------------------------------
             ^                   ^                              ^
             |                   |                              |
 16000: meta-data-lenght      nullbyte     16000 + meta-data-lenght*16 + nullbyte: meta-data-lenght
+
+```
 
 further information on the protocol can be found on `http://www.smackfu.com/stuff/programming/shoutcast.html`.
 
