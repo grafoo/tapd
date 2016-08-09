@@ -7,14 +7,20 @@ the tiny audio player daemon - /o'zapft is/
 ```
 sudo apt-get install \
   gcc \
+  gstreamer1.0-alsa \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-ugly \
   libao-dev \
   libcurl4-nss-dev \
+  libgstreamer1.0-dev \
   libjansson-dev \
   libmpg123-dev \
   libmrss0-dev \
   libsqlite3-dev \
   make \
   sqlite3
+
 ```
 
 ## opensuse
@@ -24,6 +30,7 @@ sudo zypper refresh
 sudo zypper install \
   alsa-devel \
   gcc \
+  gstreamer-devel \
   libao-devel \
   libjansson-devel \
   libmrss-devel \
