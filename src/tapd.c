@@ -4,10 +4,10 @@
 #include <curl/curl.h>
 #include <glib.h>
 #include <gst/gst.h>
+#include <libgrss.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 /* data: body data of current callback,
    size: size of char,
@@ -27,6 +27,15 @@ static gboolean gstreamer_bus_call(GstBus *bus, GstMessage *msg, gpointer data);
 void play_audio(char *uri);
 void pause_audio();
 void stop_audio();
+
+struct feed_fetch_loop_session {
+  struct mg_connection *connection;
+  GMainLoop *loop;
+  unsigned int fetch_finished;
+};
+
+static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
+                         GList *items, struct feed_fetch_loop_session *ffls);
 
 char icy_meta_buf[ICY_META_BUF_SIZE];
 size_t icy_meta_buf_len = 0;
@@ -109,6 +118,18 @@ size_t icy_meta_write_callback(char *data, size_t size, size_t count,
   return data_len;
 }
 
+static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
+                         GList *items, struct feed_fetch_loop_session *ffls) {
+  mg_printf_http_chunk(ffls->connection, "{\"title\": \"%s\"}",
+                       grss_feed_channel_get_title(feed));
+
+  ffls->fetch_finished++;
+
+  if (ffls->fetch_finished == grss_feeds_pool_get_listened_num(pool)) {
+    g_main_loop_quit(ffls->loop);
+  }
+}
+
 static void handle_mongoose_event(struct mg_connection *connection, int event,
                                   void *event_data) {
   struct http_message *message = (struct http_message *)event_data;
@@ -117,7 +138,36 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
     if (mg_vcmp(&message->uri, "/init") == 0) {
       mg_printf(connection, "HTTP/1.1 200 OK\r\n"
                             "Transfer-Encoding: chunked\r\n\r\n");
-      mg_printf_http_chunk(connection, "{\"result\": \"init\"}");
+
+      gchar *feeds[] = {"http://feeds.5by5.tv/changelog", NULL};
+      GList *list;
+      GrssFeedChannel *feed;
+      GrssFeedsPool *pool;
+      list = NULL;
+
+      GMainLoop *feed_fetch_loop;
+      feed_fetch_loop = g_main_loop_new(NULL, FALSE);
+
+      struct feed_fetch_loop_session ffls;
+      ffls.connection = connection;
+      ffls.loop = feed_fetch_loop;
+      ffls.fetch_finished = 0;
+
+      int i;
+      for (i = 0; feeds[i] != NULL; i++) {
+        feed = grss_feed_channel_new();
+        grss_feed_channel_set_source(feed, feeds[i]);
+        grss_feed_channel_set_update_interval(feed, i + 1);
+        list = g_list_prepend(list, feed);
+      }
+
+      pool = grss_feeds_pool_new();
+      grss_feeds_pool_listen(pool, list);
+      grss_feeds_pool_switch(pool, TRUE);
+      g_signal_connect(pool, "feed-ready", G_CALLBACK(feed_fetched), &ffls);
+
+      g_main_run(feed_fetch_loop);
+
       mg_send_http_chunk(connection, "", 0);
     } else if (mg_vcmp(&message->uri, "/play") == 0) {
       char uri[512];

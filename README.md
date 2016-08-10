@@ -13,6 +13,7 @@ sudo apt-get install \
   gstreamer1.0-plugins-ugly \
   libao-dev \
   libcurl4-nss-dev \
+  libgrss-dev \
   libgstreamer1.0-dev \
   libjansson-dev \
   libmpg123-dev \
@@ -20,7 +21,6 @@ sudo apt-get install \
   libsqlite3-dev \
   make \
   sqlite3
-
 ```
 
 ## opensuse
@@ -32,6 +32,7 @@ sudo zypper install \
   gcc \
   gstreamer-devel \
   libao-devel \
+  libgrss-devel \
   libjansson-devel \
   libmrss-devel \
   make \
