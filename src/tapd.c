@@ -106,8 +106,15 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
   struct http_message *message = (struct http_message *)event_data;
   switch (event) {
   case MG_EV_HTTP_REQUEST:
-    /* serve document root */
-    mg_serve_http(connection, message, mongoose_http_server_options);
+    if (mg_vcmp(&message->uri, "/init") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+      mg_printf_http_chunk(connection, "{\"result\": \"init\"}");
+      mg_send_http_chunk(connection, "", 0);
+    } else {
+      /* serve document root */
+      mg_serve_http(connection, message, mongoose_http_server_options);
+    }
     break;
   default:
     break;
