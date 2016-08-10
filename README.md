@@ -22,6 +22,7 @@ sudo apt-get install \
   make \
   sqlite3
 ```
+libgrss install on debian as libgrss-0.5 in pkg-config
 
 ## opensuse
 ```
@@ -84,5 +85,5 @@ further information on the protocol can be found on http://www.smackfu.com/stuff
 #todos
 
 - [ ] add logo consisting of a bar with multiple beer taps labled like "podcast", "webradio" and a audio jack cable plugged in
-- [X] test flexbox for css ( https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Flexible_Box_Layout/Using_CSS_flexible_boxes )
 - [ ] check why mg_printf won't send a response ( currently mg_printf_http_chunk and mg_send_http_chunk are needed )
+- [ ] make Makefile os agnostic for inserting correct libgrss flags
