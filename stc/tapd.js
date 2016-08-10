@@ -9,3 +9,21 @@ function init() {
   };
   xhr.send();
 }
+
+function play() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/play', true);
+  xhr.send('uri=' + document.getElementById('uri').value);
+}
+
+function pause() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/pause', true);
+  xhr.send();
+}
+
+function stop() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/stop', true);
+  xhr.send();
+}

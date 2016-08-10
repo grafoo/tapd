@@ -24,6 +24,10 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
 
 static gboolean gstreamer_bus_call(GstBus *bus, GstMessage *msg, gpointer data);
 
+void play_audio(char *uri);
+void pause_audio();
+void stop_audio();
+
 char icy_meta_buf[ICY_META_BUF_SIZE];
 size_t icy_meta_buf_len = 0;
 size_t icy_meta_interval = 0;
@@ -31,6 +35,10 @@ size_t icy_meta_interval = 0;
 static struct mg_serve_http_opts mongoose_http_server_options;
 static const struct mg_str mongoose_http_method_get = MG_MK_STR("GET");
 static const struct mg_str mongoose_http_method_post = MG_MK_STR("POST");
+
+GMainLoop *loop;
+GstElement *pipeline;
+int playing = 0;
 
 size_t icy_meta_header_callback(char *data, size_t size, size_t count,
                                 void *nouse) {
@@ -111,6 +119,27 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
                             "Transfer-Encoding: chunked\r\n\r\n");
       mg_printf_http_chunk(connection, "{\"result\": \"init\"}");
       mg_send_http_chunk(connection, "", 0);
+    } else if (mg_vcmp(&message->uri, "/play") == 0) {
+      char uri[512];
+      mg_get_http_var(&message->body, "uri", uri, sizeof(uri));
+
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+      mg_send_http_chunk(connection, "", 0);
+
+      play_audio(uri);
+    } else if (mg_vcmp(&message->uri, "/pause") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+      mg_send_http_chunk(connection, "", 0);
+
+      pause_audio();
+    } else if (mg_vcmp(&message->uri, "/stop") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+      mg_send_http_chunk(connection, "", 0);
+
+      stop_audio();
     } else {
       /* serve document root */
       mg_serve_http(connection, message, mongoose_http_server_options);
@@ -147,6 +176,48 @@ static gboolean gstreamer_bus_call(GstBus *bus, GstMessage *message,
 
   return TRUE;
 }
+
+void play_audio(char *uri) {
+  GstBus *bus;
+
+  /* do not init with option; usually &arg and &argv would be used here */
+  gst_init(NULL, NULL);
+
+  /* parameters are
+     GMainContext *context (if NULL, the default context will be used),
+     gboolean is_running (set to TRUE to indicate that the loop is running.
+     This is not very important since calling g_main_loop_run() will set this
+     to TRUE anyway)*/
+  loop = g_main_loop_new(NULL, FALSE);
+
+  pipeline = gst_element_factory_make("playbin", "player");
+
+  /* enable to pass in uris like file://, http://, etc. */
+  g_object_set(G_OBJECT(pipeline), "uri", uri, NULL);
+
+  bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
+  gst_bus_add_watch(bus, gstreamer_bus_call, loop);
+  gst_object_unref(bus);
+
+  gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_PLAYING);
+  playing = 1;
+  g_main_loop_run(loop);
+
+  gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_NULL);
+  gst_object_unref(GST_OBJECT(pipeline));
+}
+
+void pause_audio() {
+  if (playing) {
+    gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_PAUSED);
+    playing = 0;
+  } else {
+    gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_PLAYING);
+    playing = 1;
+  }
+}
+
+void stop_audio() { g_main_loop_quit(loop); }
 
 int main(int argc, char **argv) {
   if (strcmp("-i", argv[1]) == 0) {
@@ -199,34 +270,7 @@ int main(int argc, char **argv) {
 
     mg_mgr_free(&mongoose_event_manager);
   } else {
-    GMainLoop *loop;
-    GstElement *pipeline;
-    GstBus *bus;
-
-    /* do not init with option; usually &arg and &argv would be used here */
-    gst_init(NULL, NULL);
-
-    /* parameters are
-       GMainContext *context (if NULL, the default context will be used),
-       gboolean is_running (set to TRUE to indicate that the loop is running.
-       This is not very important since calling g_main_loop_run() will set this
-       to TRUE anyway)*/
-    loop = g_main_loop_new(NULL, FALSE);
-
-    pipeline = gst_element_factory_make("playbin", "player");
-
-    /* enable to pass in uris like file://, http://, etc. */
-    g_object_set(G_OBJECT(pipeline), "uri", argv[1], NULL);
-
-    bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
-    gst_bus_add_watch(bus, gstreamer_bus_call, loop);
-    gst_object_unref(bus);
-
-    gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_PLAYING);
-    g_main_loop_run(loop);
-
-    gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_NULL);
-    gst_object_unref(GST_OBJECT(pipeline));
+    play_audio(argv[1]);
   }
 
   return 0;
