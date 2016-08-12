@@ -54,8 +54,8 @@ however, as a resolution the public repo on github has been added to this repo a
 
 #docs
 
-## libmrss
-http://www.autistici.org/bakunin/libmrss/doc/
+## libgrss
+http://gtk.mplat.es/libgrss/documentation/0.6/GrssFeedChannel.html
 
 ## shoutcast/icecast
 ### metadata

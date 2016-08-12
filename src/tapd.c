@@ -4,6 +4,7 @@
 #include <curl/curl.h>
 #include <glib.h>
 #include <gst/gst.h>
+#include <jansson.h>
 #include <libgrss.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,7 @@ struct feed_fetch_loop_session {
   struct mg_connection *connection;
   GMainLoop *loop;
   unsigned int fetch_finished;
+  json_t *podcasts;
 };
 
 static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
@@ -120,8 +122,39 @@ size_t icy_meta_write_callback(char *data, size_t size, size_t count,
 
 static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
                          GList *items, struct feed_fetch_loop_session *ffls) {
-  mg_printf_http_chunk(ffls->connection, "{\"title\": \"%s\"}",
-                       grss_feed_channel_get_title(feed));
+  json_t *podcast = json_object();
+  json_object_set_new(podcast, "title",
+                      json_string(grss_feed_channel_get_title(feed)));
+
+  json_t *episodes = json_array();
+
+  GList *iter;
+  GrssFeedItem *item;
+
+  for (iter = items; iter; iter = g_list_next(iter)) {
+    json_t *episode = json_object();
+    item = (GrssFeedItem *)iter->data;
+
+    json_object_set_new(episode, "title",
+                        json_string(grss_feed_item_get_title(item)));
+    json_object_set_new(episode, "description",
+                        json_string(grss_feed_item_get_description(item)));
+
+    GList *enclosures = (GList *)grss_feed_item_get_enclosures(item);
+    GList *enclosures_iter;
+    GrssFeedEnclosure *enclosure;
+    for (enclosures_iter = enclosures; enclosures_iter;
+         enclosures_iter = g_list_next(enclosures_iter)) {
+      enclosure = (GrssFeedEnclosure *)enclosures_iter->data;
+      json_object_set_new(episode, "stream_uri",
+                          json_string(grss_feed_enclosure_get_url(enclosure)));
+    }
+    json_array_append_new(episodes, episode);
+  }
+
+  json_object_set_new(podcast, "episodes", episodes);
+
+  json_array_append_new(ffls->podcasts, podcast);
 
   ffls->fetch_finished++;
 
@@ -141,6 +174,7 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
 
       gchar *feeds[] = {"http://feeds.5by5.tv/changelog", NULL};
       GList *list;
+      GList *iter;
       GrssFeedChannel *feed;
       GrssFeedsPool *pool;
       list = NULL;
@@ -152,6 +186,9 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       ffls.connection = connection;
       ffls.loop = feed_fetch_loop;
       ffls.fetch_finished = 0;
+      ffls.podcasts = json_array();
+
+      json_t *podcasts = json_object();
 
       int i;
       for (i = 0; feeds[i] != NULL; i++) {
@@ -166,7 +203,20 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       grss_feeds_pool_switch(pool, TRUE);
       g_signal_connect(pool, "feed-ready", G_CALLBACK(feed_fetched), &ffls);
 
+      /* loop until all feeds are fetched */
       g_main_run(feed_fetch_loop);
+
+      /* cleanup */
+      for (iter = list; iter; iter = g_list_next(iter)) {
+        g_object_unref(iter->data);
+      }
+      g_object_unref(pool);
+
+      json_object_set_new(podcasts, "podcasts", ffls.podcasts);
+
+      char *podcasts_string = json_dumps(podcasts, JSON_COMPACT);
+      mg_printf_http_chunk(connection, "%s", podcasts_string);
+      free(podcasts_string);
 
       mg_send_http_chunk(connection, "", 0);
     } else if (mg_vcmp(&message->uri, "/play") == 0) {
