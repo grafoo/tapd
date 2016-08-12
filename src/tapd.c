@@ -1,4 +1,5 @@
 #define ICY_META_BUF_SIZE 512000
+#define _XOPEN_SOURCE /* needed for time functions */
 
 #include "mongoose/mongoose.h"
 #include <curl/curl.h>
@@ -9,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* data: body data of current callback,
    size: size of char,
@@ -131,25 +133,34 @@ static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
   GList *iter;
   GrssFeedItem *item;
 
+  time_t time_now;
+  time(&time_now);
+
   for (iter = items; iter; iter = g_list_next(iter)) {
     json_t *episode = json_object();
     item = (GrssFeedItem *)iter->data;
 
-    json_object_set_new(episode, "title",
-                        json_string(grss_feed_item_get_title(item)));
-    json_object_set_new(episode, "description",
-                        json_string(grss_feed_item_get_description(item)));
+    time_t time_publish = grss_feed_item_get_publish_time(item);
+    double time_diff = difftime(time_now, time_publish);
 
-    GList *enclosures = (GList *)grss_feed_item_get_enclosures(item);
-    GList *enclosures_iter;
-    GrssFeedEnclosure *enclosure;
-    for (enclosures_iter = enclosures; enclosures_iter;
-         enclosures_iter = g_list_next(enclosures_iter)) {
-      enclosure = (GrssFeedEnclosure *)enclosures_iter->data;
-      json_object_set_new(episode, "stream_uri",
-                          json_string(grss_feed_enclosure_get_url(enclosure)));
+    if (time_diff / 86400.0 < 30.0) {
+      json_object_set_new(episode, "title",
+                          json_string(grss_feed_item_get_title(item)));
+      json_object_set_new(episode, "description",
+                          json_string(grss_feed_item_get_description(item)));
+
+      GList *enclosures = (GList *)grss_feed_item_get_enclosures(item);
+      GList *enclosures_iter;
+      GrssFeedEnclosure *enclosure;
+      for (enclosures_iter = enclosures; enclosures_iter;
+           enclosures_iter = g_list_next(enclosures_iter)) {
+        enclosure = (GrssFeedEnclosure *)enclosures_iter->data;
+        json_object_set_new(
+            episode, "stream_uri",
+            json_string(grss_feed_enclosure_get_url(enclosure)));
+      }
+      json_array_append_new(episodes, episode);
     }
-    json_array_append_new(episodes, episode);
   }
 
   json_object_set_new(podcast, "episodes", episodes);
