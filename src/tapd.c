@@ -1,5 +1,4 @@
 #define ICY_META_BUF_SIZE 512000
-#define _XOPEN_SOURCE /* needed for time functions */
 
 #include "mongoose/mongoose.h"
 #include <curl/curl.h>
@@ -7,6 +6,7 @@
 #include <gst/gst.h>
 #include <jansson.h>
 #include <libgrss.h>
+#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +40,8 @@ struct feed_fetch_loop_session {
 
 static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
                          GList *items, struct feed_fetch_loop_session *ffls);
+
+char **select_podcasts(int *podcasts_num);
 
 char icy_meta_buf[ICY_META_BUF_SIZE];
 size_t icy_meta_buf_len = 0;
@@ -174,6 +176,40 @@ static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
   }
 }
 
+gchar **select_feeds(int *feeds_num) {
+  gchar **feeds_tmp = NULL;
+  *feeds_num = 0;
+  sqlite3 *db;
+  sqlite3_stmt *stmt;
+  int i;
+
+  if (sqlite3_open("tapd.db", &db) != SQLITE_OK) {
+    printf("failed to open database: %s\n", sqlite3_errmsg(db));
+    exit(1);
+  }
+
+  if (sqlite3_prepare_v2(db, "select uri from feeds", -1, &stmt, NULL) !=
+      SQLITE_OK) {
+    printf("failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+  }
+
+  for (i = 0; sqlite3_step(stmt) == SQLITE_ROW; i++) {
+    const char *feed_str = sqlite3_column_text(stmt, 0);
+    int feed_len = strlen(sqlite3_column_text(stmt, 0));
+
+    feeds_tmp = realloc(feeds_tmp, (sizeof(feeds_tmp) + 1) * sizeof(gchar *));
+    feeds_tmp[i] = malloc(feed_len * sizeof(gchar));
+    strcpy(feeds_tmp[i], feed_str);
+    *feeds_num += 1;
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+
+  return feeds_tmp;
+}
+
 static void handle_mongoose_event(struct mg_connection *connection, int event,
                                   void *event_data) {
   struct http_message *message = (struct http_message *)event_data;
@@ -183,7 +219,9 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       mg_printf(connection, "HTTP/1.1 200 OK\r\n"
                             "Transfer-Encoding: chunked\r\n\r\n");
 
-      gchar *feeds[] = {"http://feeds.5by5.tv/changelog", NULL};
+      int feeds_num = 0;
+
+      gchar **feeds = select_feeds(&feeds_num);
       GList *list;
       GList *iter;
       GrssFeedChannel *feed;
@@ -202,7 +240,7 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       json_t *podcasts = json_object();
 
       int i;
-      for (i = 0; feeds[i] != NULL; i++) {
+      for (i = 0; i < feeds_num; i++) {
         feed = grss_feed_channel_new();
         grss_feed_channel_set_source(feed, feeds[i]);
         grss_feed_channel_set_update_interval(feed, i + 1);

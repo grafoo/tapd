@@ -14,15 +14,17 @@ function init() {
         for (var i=podcast.episodes.length - 1; i>=0; i--) {
           var episode = podcast.episodes[i];
 
-          var newEpisode = document.createElement('div');
-          newEpisode.style.fontWeight = 'bold';
-          newEpisode.style.paddingTop = '1em';
-          newEpisode.innerHTML = episode.title + ' >> ';
+          var newEpisode = document.createElement('DETAILS');
+          var episodeSummary = document.createElement('SUMMARY');
+          var episodeTitle = document.createElement('span');
+          episodeTitle.innerHTML = episode.title + '  ';
+          episodeSummary.appendChild(episodeTitle);
+          newEpisode.appendChild(episodeSummary);
 
           var newPlayEpisode = document.createElement('a');
           newPlayEpisode.href = 'javascript:play("' + episode.stream_uri + '");';
-          newPlayEpisode.innerHTML = 'play ';
-          newEpisode.appendChild(newPlayEpisode);
+          newPlayEpisode.innerHTML = 'PLAY';
+          episodeSummary.appendChild(newPlayEpisode);
 
           var newDescription = document.createElement('div');
           newDescription.style.fontWeight = 'normal';
