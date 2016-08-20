@@ -41,7 +41,7 @@ struct feed_fetch_loop_session {
 static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
                          GList *items, struct feed_fetch_loop_session *ffls);
 
-char **select_podcasts(int *podcasts_num);
+char **select_feeds(int *podcasts_num);
 
 char icy_meta_buf[ICY_META_BUF_SIZE];
 size_t icy_meta_buf_len = 0;
@@ -199,7 +199,7 @@ gchar **select_feeds(int *feeds_num) {
     int feed_len = strlen(sqlite3_column_text(stmt, 0));
 
     feeds_tmp = realloc(feeds_tmp, (sizeof(feeds_tmp) + 1) * sizeof(gchar *));
-    feeds_tmp[i] = malloc(feed_len * sizeof(gchar));
+    feeds_tmp[i] = malloc((feed_len + 1) * sizeof(gchar));
     strcpy(feeds_tmp[i], feed_str);
     *feeds_num += 1;
   }
