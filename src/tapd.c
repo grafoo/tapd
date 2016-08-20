@@ -1,11 +1,12 @@
 #define ICY_META_BUF_SIZE 512000
+#define _XOPEN_SOURCE /* needed for time functions e.g. strptime */
 
 #include "mongoose/mongoose.h"
 #include <curl/curl.h>
 #include <glib.h>
 #include <gst/gst.h>
 #include <jansson.h>
-#include <libgrss.h>
+#include <mxml.h>
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,17 +32,7 @@ void play_audio(char *uri);
 void pause_audio();
 void stop_audio();
 
-struct feed_fetch_loop_session {
-  struct mg_connection *connection;
-  GMainLoop *loop;
-  unsigned int fetch_finished;
-  json_t *podcasts;
-};
-
-static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
-                         GList *items, struct feed_fetch_loop_session *ffls);
-
-char **select_feeds(int *podcasts_num);
+char **select_feeds(int *feeds_num);
 
 char icy_meta_buf[ICY_META_BUF_SIZE];
 size_t icy_meta_buf_len = 0;
@@ -54,6 +45,14 @@ static const struct mg_str mongoose_http_method_post = MG_MK_STR("POST");
 GMainLoop *loop;
 GstElement *pipeline;
 int playing = 0;
+
+struct membuf {
+  char *string;
+  size_t size;
+};
+
+static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
+                                     void *membuf);
 
 size_t icy_meta_header_callback(char *data, size_t size, size_t count,
                                 void *nouse) {
@@ -124,60 +123,8 @@ size_t icy_meta_write_callback(char *data, size_t size, size_t count,
   return data_len;
 }
 
-static void feed_fetched(GrssFeedsPool *pool, GrssFeedChannel *feed,
-                         GList *items, struct feed_fetch_loop_session *ffls) {
-  json_t *podcast = json_object();
-  json_object_set_new(podcast, "title",
-                      json_string(grss_feed_channel_get_title(feed)));
-
-  json_t *episodes = json_array();
-
-  GList *iter;
-  GrssFeedItem *item;
-
-  time_t time_now;
-  time(&time_now);
-
-  for (iter = items; iter; iter = g_list_next(iter)) {
-    json_t *episode = json_object();
-    item = (GrssFeedItem *)iter->data;
-
-    time_t time_publish = grss_feed_item_get_publish_time(item);
-    double time_diff = difftime(time_now, time_publish);
-
-    if (time_diff / 86400.0 < 30.0) {
-      json_object_set_new(episode, "title",
-                          json_string(grss_feed_item_get_title(item)));
-      json_object_set_new(episode, "description",
-                          json_string(grss_feed_item_get_description(item)));
-
-      GList *enclosures = (GList *)grss_feed_item_get_enclosures(item);
-      GList *enclosures_iter;
-      GrssFeedEnclosure *enclosure;
-      for (enclosures_iter = enclosures; enclosures_iter;
-           enclosures_iter = g_list_next(enclosures_iter)) {
-        enclosure = (GrssFeedEnclosure *)enclosures_iter->data;
-        json_object_set_new(
-            episode, "stream_uri",
-            json_string(grss_feed_enclosure_get_url(enclosure)));
-      }
-      json_array_append_new(episodes, episode);
-    }
-  }
-
-  json_object_set_new(podcast, "episodes", episodes);
-
-  json_array_append_new(ffls->podcasts, podcast);
-
-  ffls->fetch_finished++;
-
-  if (ffls->fetch_finished == grss_feeds_pool_get_listened_num(pool)) {
-    g_main_loop_quit(ffls->loop);
-  }
-}
-
-gchar **select_feeds(int *feeds_num) {
-  gchar **feeds_tmp = NULL;
+char **select_feeds(int *feeds_num) {
+  char **feeds_tmp = NULL;
   *feeds_num = 0;
   sqlite3 *db;
   sqlite3_stmt *stmt;
@@ -198,8 +145,8 @@ gchar **select_feeds(int *feeds_num) {
     const char *feed_str = sqlite3_column_text(stmt, 0);
     int feed_len = strlen(sqlite3_column_text(stmt, 0));
 
-    feeds_tmp = realloc(feeds_tmp, (sizeof(feeds_tmp) + 1) * sizeof(gchar *));
-    feeds_tmp[i] = malloc((feed_len + 1) * sizeof(gchar));
+    feeds_tmp = realloc(feeds_tmp, (sizeof(feeds_tmp) + 1) * sizeof(char *));
+    feeds_tmp[i] = malloc((feed_len + 1) * sizeof(char));
     strcpy(feeds_tmp[i], feed_str);
     *feeds_num += 1;
   }
@@ -208,6 +155,17 @@ gchar **select_feeds(int *feeds_num) {
   sqlite3_close(db);
 
   return feeds_tmp;
+}
+
+static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
+                                     void *membuf) {
+  size_t realsize = size * count;
+  struct membuf *mem = (struct membuf *)membuf;
+  mem->string = realloc(mem->string, mem->size + realsize + 1);
+  memcpy(&(mem->string[mem->size]), data, realsize);
+  mem->size += realsize;
+  mem->string[mem->size] = 0;
+  return realsize;
 }
 
 static void handle_mongoose_event(struct mg_connection *connection, int event,
@@ -221,51 +179,139 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
 
       int feeds_num = 0;
 
-      gchar **feeds = select_feeds(&feeds_num);
-      GList *list;
-      GList *iter;
-      GrssFeedChannel *feed;
-      GrssFeedsPool *pool;
-      list = NULL;
+      char **feeds = select_feeds(&feeds_num);
 
-      GMainLoop *feed_fetch_loop;
-      feed_fetch_loop = g_main_loop_new(NULL, FALSE);
+      json_t *result_json_obj = json_object();
+      json_t *podcasts_json_arr = json_array();
 
-      struct feed_fetch_loop_session ffls;
-      ffls.connection = connection;
-      ffls.loop = feed_fetch_loop;
-      ffls.fetch_finished = 0;
-      ffls.podcasts = json_array();
-
-      json_t *podcasts = json_object();
+      time_t time_now;
+      time(&time_now);
 
       int i;
       for (i = 0; i < feeds_num; i++) {
-        feed = grss_feed_channel_new();
-        grss_feed_channel_set_source(feed, feeds[i]);
-        grss_feed_channel_set_update_interval(feed, i + 1);
-        list = g_list_prepend(list, feed);
+        mxml_node_t *feed;
+        mxml_node_t *episode;
+
+        json_t *podcast_json_obj = json_object();
+        json_t *episodes_json_arr = json_array();
+
+        struct membuf feed_xml;
+        feed_xml.string = malloc(1);
+        feed_xml.size = 0;
+
+        CURL *curl_handle = NULL;
+        curl_handle = curl_easy_init();
+        curl_easy_setopt(curl_handle, CURLOPT_URL, feeds[i]);
+
+        /* follow redirects */
+        curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
+
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION,
+                         get_feed_xml_write_callback);
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&feed_xml);
+
+        curl_easy_perform(curl_handle);
+
+        curl_easy_cleanup(curl_handle);
+
+        /* MXML_OPAQUE_CALLBACK needs to be used, otherwise mxml will stop
+         * processing the node after the first space character*/
+        feed = mxmlLoadString(NULL, feed_xml.string, MXML_OPAQUE_CALLBACK);
+        free(feed_xml.string);
+
+        mxml_node_t *podcast_title = mxmlFindPath(feed, "rss/channel/title");
+        json_object_set_new(podcast_json_obj, "title",
+                            json_string(mxmlGetOpaque(podcast_title)));
+        mxmlDelete(podcast_title);
+
+        struct tm tm_publish;
+        memset(&tm_publish, 0, sizeof(struct tm));
+
+        for (episode =
+                 mxmlFindElement(feed, feed, "item", NULL, NULL, MXML_DESCEND);
+             episode != NULL;
+             episode = mxmlFindElement(episode, feed, "item", NULL, NULL,
+                                       MXML_DESCEND)) {
+          json_t *episode_json = json_object();
+          mxml_node_t *episode_detail;
+
+          /* test if episode war published in the last 30 days, don't include
+           * episode otherwise */
+          episode_detail = mxmlFindPath(episode, "pubDate");
+          const char *pubdate_str = mxmlGetOpaque(episode_detail);
+
+          /*
+            pubdate_str format like "Sat, 20 Aug 2016 20:54:24 +0200"
+            as an alternative to strptime something like the following could be
+            used:
+             char month[4];
+             int day, year;
+             sscanf(
+               pubdate_str,
+               "%*s %d %s %d %*d:%*d:%*d %*s",
+               &day,
+               month,
+               &year
+             );
+          */
+          if (strptime(pubdate_str, "%a, %0d %b %Y %T %z", &tm_publish) !=
+              NULL) {
+            double time_diff = difftime(time_now, mktime(&tm_publish));
+            if (time_diff / 86400.0 > 30.0) {
+              break;
+            }
+          } else if (strptime(pubdate_str, "%a, %0d %b %Y %T %Z",
+                              &tm_publish) != NULL) {
+            double time_diff = difftime(time_now, mktime(&tm_publish));
+            if (time_diff / 86400.0 > 30.0) {
+              break;
+            }
+          } else {
+            printf("unsupported time format: %s\n", pubdate_str);
+            break;
+          }
+
+          episode_detail = mxmlFindPath(episode, "title");
+          json_object_set_new(episode_json, "title",
+                              json_string(mxmlGetOpaque(episode_detail)));
+
+          episode_detail = mxmlFindPath(episode, "itunes:duration");
+          json_object_set_new(episode_json, "duration",
+                              json_string(mxmlGetOpaque(episode_detail)));
+
+          episode_detail = mxmlFindPath(episode, "description");
+          mxml_node_t *cdata = NULL;
+          cdata = mxmlGetFirstChild(episode_detail);
+          if (cdata != NULL) {
+            json_object_set_new(episode_json, "description",
+                                json_string(mxmlGetCDATA(cdata)));
+          } else {
+            json_object_set_new(episode_json, "description",
+                                json_string(mxmlGetOpaque(episode_detail)));
+          }
+          mxmlDelete(cdata);
+
+          episode_detail = mxmlFindPath(episode, "enclosure");
+          const char *url = mxmlElementGetAttr(episode_detail, "url");
+          json_object_set_new(episode_json, "stream_uri", json_string(url));
+
+          mxmlDelete(episode_detail);
+
+          json_array_append_new(episodes_json_arr, episode_json);
+        }
+
+        json_object_set_new(podcast_json_obj, "episodes", episodes_json_arr);
+        json_array_append_new(podcasts_json_arr, podcast_json_obj);
+
+        mxmlDelete(episode);
+        mxmlDelete(feed);
       }
 
-      pool = grss_feeds_pool_new();
-      grss_feeds_pool_listen(pool, list);
-      grss_feeds_pool_switch(pool, TRUE);
-      g_signal_connect(pool, "feed-ready", G_CALLBACK(feed_fetched), &ffls);
+      json_object_set_new(result_json_obj, "podcasts", podcasts_json_arr);
 
-      /* loop until all feeds are fetched */
-      g_main_run(feed_fetch_loop);
-
-      /* cleanup */
-      for (iter = list; iter; iter = g_list_next(iter)) {
-        g_object_unref(iter->data);
-      }
-      g_object_unref(pool);
-
-      json_object_set_new(podcasts, "podcasts", ffls.podcasts);
-
-      char *podcasts_string = json_dumps(podcasts, JSON_COMPACT);
-      mg_printf_http_chunk(connection, "%s", podcasts_string);
-      free(podcasts_string);
+      char *result_json_str = json_dumps(result_json_obj, JSON_COMPACT);
+      mg_printf_http_chunk(connection, "%s", result_json_str);
+      free(result_json_str);
 
       mg_send_http_chunk(connection, "", 0);
     } else if (mg_vcmp(&message->uri, "/play") == 0) {

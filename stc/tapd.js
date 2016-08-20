@@ -11,13 +11,12 @@ function init() {
         newPodcast.innerHTML = podcast.title;
         podcasts.appendChild(newPodcast);
 
-        for (var i=podcast.episodes.length - 1; i>=0; i--) {
-          var episode = podcast.episodes[i];
-
+        // for (var i=podcast.episodes.length - 1; i>=0; i--) {
+        for (episode of podcast.episodes) {
           var newEpisode = document.createElement('DETAILS');
           var episodeSummary = document.createElement('SUMMARY');
           var episodeTitle = document.createElement('span');
-          episodeTitle.innerHTML = episode.title + '  ';
+          episodeTitle.innerHTML = episode.title + '  >>' + ' [ ' + episode.duration + ' ] ';
           episodeSummary.appendChild(episodeTitle);
           newEpisode.appendChild(episodeSummary);
 

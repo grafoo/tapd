@@ -13,11 +13,10 @@ sudo apt-get install \
   gstreamer1.0-plugins-ugly \
   libao-dev \
   libcurl4-nss-dev \
-  libgrss-dev \
   libgstreamer1.0-dev \
   libjansson-dev \
   libmpg123-dev \
-  libmrss0-dev \
+  libmxml-dev \
   libsqlite3-dev \
   make \
   sqlite3
@@ -33,10 +32,10 @@ sudo zypper install \
   gcc \
   gstreamer-devel \
   libao-devel \
-  libgrss-devel \
   libjansson-devel \
   libmrss-devel \
   make \
+  mxml-devel \
   scons # makes it easier to include non package mpg123 \
   sqlite3 # for interacting with the database \
   sqlite3-devel
@@ -54,8 +53,8 @@ however, as a resolution the public repo on github has been added to this repo a
 
 #docs
 
-## libgrss
-http://gtk.mplat.es/libgrss/documentation/0.6/GrssFeedChannel.html
+## mxml
+http://www.msweet.org/documentation/project3/Mini-XML.html
 
 ## shoutcast/icecast
 ### metadata
@@ -86,4 +85,3 @@ further information on the protocol can be found on http://www.smackfu.com/stuff
 
 - [ ] add logo consisting of a bar with multiple beer taps labled like "podcast", "webradio" and a audio jack cable plugged in
 - [ ] check why mg_printf won't send a response ( currently mg_printf_http_chunk and mg_send_http_chunk are needed )
-- [ ] make Makefile os agnostic for inserting correct libgrss flags
