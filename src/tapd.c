@@ -52,7 +52,7 @@ struct membuf {
 };
 
 static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
-                                     void *membuf);
+                                          void *membuf);
 
 size_t icy_meta_header_callback(char *data, size_t size, size_t count,
                                 void *nouse) {
@@ -158,7 +158,7 @@ char **select_feeds(int *feeds_num) {
 }
 
 static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
-                                     void *membuf) {
+                                          void *membuf) {
   size_t realsize = size * count;
   struct membuf *mem = (struct membuf *)membuf;
   mem->string = realloc(mem->string, mem->size + realsize + 1);
@@ -429,7 +429,7 @@ int main(int argc, char **argv) {
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, request_headers);
 
     /* set url */
-    curl_easy_setopt(curl_handle, CURLOPT_URL, argv[1]);
+    curl_easy_setopt(curl_handle, CURLOPT_URL, argv[2]);
 
     /* follow redirects */
     curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
