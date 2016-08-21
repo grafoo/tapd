@@ -32,6 +32,15 @@ void play_audio(char *uri);
 void pause_audio();
 void stop_audio();
 
+struct radios {
+  char *name;
+  size_t name_len;
+  char *stream_uri;
+  size_t stream_uri_len;
+};
+
+void select_radios_num(int *radios_num);
+void select_radios(struct radios radios[]);
 char **select_feeds(int *feeds_num);
 
 char icy_meta_buf[ICY_META_BUF_SIZE];
@@ -53,6 +62,7 @@ struct membuf {
 
 static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
                                           void *membuf);
+
 
 size_t icy_meta_header_callback(char *data, size_t size, size_t count,
                                 void *nouse) {
@@ -157,6 +167,64 @@ char **select_feeds(int *feeds_num) {
   return feeds_tmp;
 }
 
+void select_radios_num(int *radios_num) {
+  sqlite3 *db;
+  sqlite3_stmt *stmt;
+
+  if (sqlite3_open("tapd.db", &db) != SQLITE_OK) {
+    printf("failed to open database: %s\n", sqlite3_errmsg(db));
+    exit(1);
+  }
+
+  if (sqlite3_prepare_v2(db, "select count(id) from radios", -1, &stmt, NULL) !=
+      SQLITE_OK) {
+    printf("failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+  }
+
+  sqlite3_step(stmt);
+  *radios_num = sqlite3_column_int(stmt, 0);
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+}
+
+void select_radios(struct radios radios[]) {
+  sqlite3 *db;
+  sqlite3_stmt *stmt;
+
+  if (sqlite3_open("tapd.db", &db) != SQLITE_OK) {
+    printf("failed to open database: %s\n", sqlite3_errmsg(db));
+    exit(1);
+  }
+
+  if (sqlite3_prepare_v2(db, "select name, stream_uri from radios", -1, &stmt,
+                         NULL) != SQLITE_OK) {
+    printf("failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+  }
+
+  int i;
+  for (i = 0; sqlite3_step(stmt) == SQLITE_ROW; i++) {
+    const char *radio_name = sqlite3_column_text(stmt, 0);
+    size_t radio_name_len = strlen(radio_name);
+
+    const char *radio_stream_uri = sqlite3_column_text(stmt, 1);
+    size_t radio_stream_uri_len = strlen(radio_stream_uri);
+
+    radios[i].name = malloc(radio_name_len * sizeof(char));
+    memcpy(radios[i].name, radio_name, radio_name_len);
+    radios[i].name_len = radio_name_len;
+
+    radios[i].stream_uri = malloc(radio_stream_uri_len * sizeof(char));
+    memcpy(radios[i].stream_uri, radio_stream_uri, radio_stream_uri_len);
+    radios[i].stream_uri_len = radio_stream_uri_len;
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+}
+
 static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
                                           void *membuf) {
   size_t realsize = size * count;
@@ -173,7 +241,38 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
   struct http_message *message = (struct http_message *)event_data;
   switch (event) {
   case MG_EV_HTTP_REQUEST:
-    if (mg_vcmp(&message->uri, "/init") == 0) {
+    if (mg_vcmp(&message->uri, "/radios") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+
+      int radios_num = 0;
+      select_radios_num(&radios_num);
+
+      struct radios radios[radios_num];
+      select_radios(radios);
+
+      json_t *result_json_obj = json_object();
+      json_t *radios_json_arr = json_array();
+
+      int i;
+      for (i = 0; i < radios_num; i++) {
+        json_t *radio_json_obj = json_object();
+        json_object_set_new(radio_json_obj, "name",
+                            json_stringn(radios[i].name, radios[i].name_len));
+        json_object_set_new(
+            radio_json_obj, "stream_uri",
+            json_stringn(radios[i].stream_uri, radios[i].stream_uri_len));
+        json_array_append_new(radios_json_arr, radio_json_obj);
+      }
+
+      json_object_set_new(result_json_obj, "radios", radios_json_arr);
+
+      char *result_json_str = json_dumps(result_json_obj, JSON_COMPACT);
+      mg_printf_http_chunk(connection, "%s", result_json_str);
+      free(result_json_str);
+
+      mg_send_http_chunk(connection, "", 0);
+    } else if (mg_vcmp(&message->uri, "/podcasts") == 0) {
       mg_printf(connection, "HTTP/1.1 200 OK\r\n"
                             "Transfer-Encoding: chunked\r\n\r\n");
 

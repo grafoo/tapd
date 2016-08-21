@@ -3,21 +3,26 @@
 <head>
   <link rel="stylesheet" type="text/css" href="tapd.css">
   <script src="tapd.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 
 <body onLoad="init();">
-  <div id="container">
-    <div class="content">
-      <div id="podcasts"></div>
-    </div>
-    <div class="sidebar">
+  <h1 onclick="toggleRadios();">&#187; Radios</h1>
+  <ul id="radios" class="hidden"></ul>
+
+  <div id="podcasts"></div>
+
+  <div id="menu-button" onclick="toggleMenu();">&#8857;</div>
+  <ul id="menu-items" class="hidden">
+    <li>
+      <span id="play" onclick="play();">&#9656;</span>
+      <span id="pause" onclick="pause();">&#9611;&#9611;</span>
+      <span id="stop" onclick="stop();">&#9724;</button></span>
+    </li>
+    <li>
+      <label for="uri">stream-uri</label>
       <input id="uri" type="text"/>
-      <div id="playbackButtons">
-        <button id="play" onclick="play();">PLAY</button>
-        <button id="pause" onclick="pause();">PAUSE</button>
-        <button id="stop" onclick="stop();">STOP</button>
-      </div>
-    </div>
-  </div>
+    </li>
+  </ul>
 </body>
 </html>

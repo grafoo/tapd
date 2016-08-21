@@ -11,3 +11,10 @@ create table episodes (
   stream_uri text not null,
   duration text not null
 );
+
+create table radios (
+  id integer primary key autoincrement,
+  name text not null,
+  url text not null,
+  stream_uri text not null
+);

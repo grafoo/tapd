@@ -1,5 +1,5 @@
 all:
-	cc -o tapd src/tapd.c src/mongoose/mongoose.c -D MG_ENABLE_THREADS -l pthread -l curl $(shell pkg-config --cflags --libs gstreamer-1.0) -l jansson -l sqlite3 -l mxml
+	cc -Wall -otapd src/tapd.c src/mongoose/mongoose.c -DMG_ENABLE_THREADS -lpthread -lcurl $(shell pkg-config --cflags --libs gstreamer-1.0) -ljansson -lsqlite3 -lmxml
 
 clean:
 	rm tapd
