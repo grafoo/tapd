@@ -8,14 +8,16 @@ function getRadios() {
   xhr.responseType = "json";
   xhr.open('GET', '/radios', true);
   xhr.onreadystatechange = function() {
-    var radios = document.getElementById('radios');
-    for (radio of xhr.response.radios) {
-      var newRadio = document.createElement('li');
-      var newPlayRadio = document.createElement('a');
-      newPlayRadio.href = 'javascript:play("' + radio.stream_uri + '");';
-      newPlayRadio.innerHTML = radio.name;
-      newRadio.appendChild(newPlayRadio);
-      radios.appendChild(newRadio);
+    if (xhr.readyState === XMLHttpRequest.DONE) {
+      var radios = document.getElementById('radios');
+      for (radio of xhr.response.radios) {
+        var newRadio = document.createElement('li');
+        var newPlayRadio = document.createElement('a');
+        newPlayRadio.href = 'javascript:play("' + radio.stream_uri + '");';
+        newPlayRadio.innerHTML = radio.name;
+        newRadio.appendChild(newPlayRadio);
+        radios.appendChild(newRadio);
+      }
     }
   }
   xhr.send();
@@ -27,14 +29,14 @@ function getPodcasts() {
   xhr.open('GET', '/podcasts', true);
   xhr.onreadystatechange = function() {
     if (xhr.readyState === XMLHttpRequest.DONE) {
-      console.log(xhr.response);
       var podcasts = document.getElementById('podcasts');
       for (podcast of xhr.response.podcasts) {
-        var newPodcast = document.createElement('h1');
-        newPodcast.innerHTML = podcast.title;
-        podcasts.appendChild(newPodcast);
+        var newPodcast = document.createElement('div');
+        newPodcast.id = "podcast-" + podcast.id;
+        var newPodcastName = document.createElement('h1');
+        newPodcastName.innerHTML = podcast.title;
+        newPodcast.appendChild(newPodcastName);
 
-        // for (var i=podcast.episodes.length - 1; i>=0; i--) {
         for (episode of podcast.episodes) {
           var newEpisode = document.createElement('DETAILS');
           var episodeSummary = document.createElement('SUMMARY');
@@ -53,8 +55,15 @@ function getPodcasts() {
           newDescription.innerHTML = episode.description;
           newEpisode.appendChild(newDescription);
 
-          podcasts.appendChild(newEpisode);
+          newPodcast.appendChild(newEpisode);
         }
+
+        var newGetAllEpisodes = document.createElement('a');
+        newGetAllEpisodes.href = 'javascript:getAllEpisodes(' + podcast.id + ');';
+        newGetAllEpisodes.innerHTML = 'LOAD ALL';
+        newPodcast.appendChild(newGetAllEpisodes);
+
+        podcasts.appendChild(newPodcast);
       }
     }
   };
@@ -82,7 +91,7 @@ function stop() {
   xhr.send();
 }
 
-function toggleMenu(){
+function toggleMenu() {
   var menuItems = document.getElementById('menu-items');
   var menuButton = document.getElementById('menu-button');
   if (menuItems.className == 'hidden') {
@@ -96,11 +105,60 @@ function toggleMenu(){
   }
 }
 
-function toggleRadios(){
+function toggleRadios() {
   var radios = document.getElementById('radios');
   if (radios.className == 'hidden') {
     radios.className = 'visible';
   } else {
     radios.className = 'hidden';
   }
+}
+
+function getAllEpisodes(podcastID) {
+  var xhr = new XMLHttpRequest();
+  xhr.responseType = "json";
+  xhr.open('GET', '/podcast/episodes?id=' + podcastID + '&range=all', true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === XMLHttpRequest.DONE) {
+      var oldPodcast = document.getElementById('podcast-' + xhr.response.podcast.id);
+      oldPodcast.remove();
+
+      var podcasts = document.getElementById('podcasts');
+
+      var newPodcast = document.createElement('div');
+      newPodcast.id = "podcast-" + xhr.response.podcast.id;
+      var newPodcastName = document.createElement('h1');
+      newPodcastName.innerHTML = xhr.response.podcast.title;
+      newPodcast.appendChild(newPodcastName);
+
+      for (episode of xhr.response.podcast.episodes) {
+        var newEpisode = document.createElement('DETAILS');
+        var episodeSummary = document.createElement('SUMMARY');
+        var episodeTitle = document.createElement('span');
+        episodeTitle.innerHTML = episode.title + '  >>' + ' [ ' + episode.duration + ' ] ';
+        episodeSummary.appendChild(episodeTitle);
+        newEpisode.appendChild(episodeSummary);
+
+        var newPlayEpisode = document.createElement('a');
+        newPlayEpisode.href = 'javascript:play("' + episode.stream_uri + '");';
+        newPlayEpisode.innerHTML = 'PLAY';
+        episodeSummary.appendChild(newPlayEpisode);
+
+        var newDescription = document.createElement('div');
+        newDescription.style.fontWeight = 'normal';
+        newDescription.innerHTML = episode.description;
+        newEpisode.appendChild(newDescription);
+
+        newPodcast.appendChild(newEpisode);
+      }
+
+      var newGetAllEpisodes = document.createElement('a');
+      newGetAllEpisodes.href = 'javascript:getAllEpisodes(' + xhr.response.podcast.id + ');';
+      newGetAllEpisodes.innerHTML = 'LOAD ALL';
+      newPodcast.appendChild(newGetAllEpisodes);
+
+      podcasts.appendChild(newPodcast);
+    }
+  }
+  xhr.send();
 }

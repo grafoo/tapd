@@ -1,5 +1,6 @@
 #define ICY_META_BUF_SIZE 512000
-#define _XOPEN_SOURCE /* needed for time functions e.g. strptime */
+#define _XOPEN_SOURCE   /* needed for time functions e.g. strptime */
+#define _DEFAULT_SOURCE /* needed for strsep */
 
 #include "mongoose/mongoose.h"
 #include <curl/curl.h>
@@ -32,7 +33,7 @@ void play_audio(char *uri);
 void pause_audio();
 void stop_audio();
 
-struct radios {
+struct radio {
   char *name;
   size_t name_len;
   char *stream_uri;
@@ -40,8 +41,15 @@ struct radios {
 };
 
 void select_radios_num(int *radios_num);
-void select_radios(struct radios radios[]);
-char **select_feeds(int *feeds_num);
+void select_radios(struct radio radios[]);
+
+struct feed {
+  int id;
+  char *uri;
+};
+
+void select_feeds(struct feed **feeds, int *feeds_num);
+void select_feed(struct feed *feed, int id);
 
 char icy_meta_buf[ICY_META_BUF_SIZE];
 size_t icy_meta_buf_len = 0;
@@ -63,6 +71,13 @@ struct membuf {
 static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
                                           void *membuf);
 
+struct query_param {
+  char *key;
+  char *val;
+};
+
+void extract_params(struct query_param **query_params, char *query_string,
+                    size_t *query_params_len);
 
 size_t icy_meta_header_callback(char *data, size_t size, size_t count,
                                 void *nouse) {
@@ -133,9 +148,7 @@ size_t icy_meta_write_callback(char *data, size_t size, size_t count,
   return data_len;
 }
 
-char **select_feeds(int *feeds_num) {
-  char **feeds_tmp = NULL;
-  *feeds_num = 0;
+void select_feeds(struct feed **feeds, int *feeds_num) {
   sqlite3 *db;
   sqlite3_stmt *stmt;
   int i;
@@ -145,26 +158,54 @@ char **select_feeds(int *feeds_num) {
     exit(1);
   }
 
-  if (sqlite3_prepare_v2(db, "select uri from feeds", -1, &stmt, NULL) !=
+  if (sqlite3_prepare_v2(db, "select id, uri from feeds", -1, &stmt, NULL) !=
       SQLITE_OK) {
     printf("failed to prepare statement: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
   }
 
   for (i = 0; sqlite3_step(stmt) == SQLITE_ROW; i++) {
-    const char *feed_str = sqlite3_column_text(stmt, 0);
-    int feed_len = strlen(sqlite3_column_text(stmt, 0));
+    struct feed *tmp = realloc(*feeds, (*feeds_num + 1) * sizeof(struct feed));
+    if (tmp == NULL) {
+      puts("failed allocating memory for feeds struct");
+      exit(1);
+    } else {
+      *feeds = tmp;
+    }
 
-    feeds_tmp = realloc(feeds_tmp, (sizeof(feeds_tmp) + 1) * sizeof(char *));
-    feeds_tmp[i] = malloc((feed_len + 1) * sizeof(char));
-    strcpy(feeds_tmp[i], feed_str);
-    *feeds_num += 1;
+    (*feeds)[*feeds_num].id = sqlite3_column_int(stmt, 0);
+    (*feeds)[*feeds_num].uri =
+        strdup((const char *)sqlite3_column_text(stmt, 1));
+    (*feeds_num)++;
   }
 
   sqlite3_finalize(stmt);
   sqlite3_close(db);
+}
 
-  return feeds_tmp;
+void select_feed(struct feed *feed, int id) {
+  sqlite3 *db;
+  sqlite3_stmt *stmt;
+
+  if (sqlite3_open("tapd.db", &db) != SQLITE_OK) {
+    printf("failed to open database: %s\n", sqlite3_errmsg(db));
+    exit(1);
+  }
+
+  if (sqlite3_prepare_v2(db, "select uri from feeds where id = ?", -1, &stmt,
+                         NULL) != SQLITE_OK) {
+    printf("failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+  }
+
+  sqlite3_bind_int(stmt, 1, id);
+
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    feed->uri = strdup((const char *)sqlite3_column_text(stmt, 0));
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
 }
 
 void select_radios_num(int *radios_num) {
@@ -189,7 +230,7 @@ void select_radios_num(int *radios_num) {
   sqlite3_close(db);
 }
 
-void select_radios(struct radios radios[]) {
+void select_radios(struct radio radios[]) {
   sqlite3 *db;
   sqlite3_stmt *stmt;
 
@@ -206,10 +247,10 @@ void select_radios(struct radios radios[]) {
 
   int i;
   for (i = 0; sqlite3_step(stmt) == SQLITE_ROW; i++) {
-    const char *radio_name = sqlite3_column_text(stmt, 0);
+    const char *radio_name = (const char *)sqlite3_column_text(stmt, 0);
     size_t radio_name_len = strlen(radio_name);
 
-    const char *radio_stream_uri = sqlite3_column_text(stmt, 1);
+    const char *radio_stream_uri = (const char *)sqlite3_column_text(stmt, 1);
     size_t radio_stream_uri_len = strlen(radio_stream_uri);
 
     radios[i].name = malloc(radio_name_len * sizeof(char));
@@ -236,19 +277,40 @@ static size_t get_feed_xml_write_callback(void *data, size_t size, size_t count,
   return realsize;
 }
 
+void extract_params(struct query_param **query_params, char *query_string,
+                    size_t *query_params_len) {
+  char *token, *key;
+
+  while (query_string != NULL) {
+    token = strsep(&query_string, "&");
+    key = strsep(&token, "=");
+    *query_params = realloc(*query_params, (*query_params_len + 1) *
+                                               sizeof(struct query_param));
+    (*query_params)[*query_params_len].key = malloc(strlen(key) + 1);
+    (*query_params)[*query_params_len].val = malloc(strlen(token) + 1);
+    memcpy((*query_params)[*query_params_len].key, key, strlen(key) + 1);
+    memcpy((*query_params)[*query_params_len].val, token, strlen(token) + 1);
+
+    if (query_string != NULL) {
+      (*query_params_len)++;
+    }
+  }
+}
+
 static void handle_mongoose_event(struct mg_connection *connection, int event,
                                   void *event_data) {
   struct http_message *message = (struct http_message *)event_data;
   switch (event) {
   case MG_EV_HTTP_REQUEST:
     if (mg_vcmp(&message->uri, "/radios") == 0) {
+
       mg_printf(connection, "HTTP/1.1 200 OK\r\n"
                             "Transfer-Encoding: chunked\r\n\r\n");
 
       int radios_num = 0;
       select_radios_num(&radios_num);
 
-      struct radios radios[radios_num];
+      struct radio radios[radios_num];
       select_radios(radios);
 
       json_t *result_json_obj = json_object();
@@ -276,9 +338,9 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       mg_printf(connection, "HTTP/1.1 200 OK\r\n"
                             "Transfer-Encoding: chunked\r\n\r\n");
 
+      struct feed *feeds = NULL;
       int feeds_num = 0;
-
-      char **feeds = select_feeds(&feeds_num);
+      select_feeds(&feeds, &feeds_num);
 
       json_t *result_json_obj = json_object();
       json_t *podcasts_json_arr = json_array();
@@ -294,13 +356,15 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
         json_t *podcast_json_obj = json_object();
         json_t *episodes_json_arr = json_array();
 
+        json_object_set_new(podcast_json_obj, "id", json_integer(feeds[i].id));
+
         struct membuf feed_xml;
         feed_xml.string = malloc(1);
         feed_xml.size = 0;
 
         CURL *curl_handle = NULL;
         curl_handle = curl_easy_init();
-        curl_easy_setopt(curl_handle, CURLOPT_URL, feeds[i]);
+        curl_easy_setopt(curl_handle, CURLOPT_URL, feeds[i].uri);
 
         /* follow redirects */
         curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
@@ -334,7 +398,7 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
           json_t *episode_json = json_object();
           mxml_node_t *episode_detail;
 
-          /* test if episode war published in the last 30 days, don't include
+          /* test if episode was published in the last 30 days, don't include
            * episode otherwise */
           episode_detail = mxmlFindPath(episode, "pubDate");
           const char *pubdate_str = mxmlGetOpaque(episode_detail);
@@ -407,6 +471,163 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       }
 
       json_object_set_new(result_json_obj, "podcasts", podcasts_json_arr);
+
+      char *result_json_str = json_dumps(result_json_obj, JSON_COMPACT);
+      mg_printf_http_chunk(connection, "%s", result_json_str);
+      free(result_json_str);
+
+      mg_send_http_chunk(connection, "", 0);
+    } else if (mg_vcmp(&message->uri, "/podcast/episodes") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+
+      char *query_string =
+          strndup(message->query_string.p, message->query_string.len);
+      size_t query_params_len = 0;
+      struct query_param *query_params = NULL;
+      extract_params(&query_params, query_string, &query_params_len);
+      free(query_string);
+
+      struct feed feed;
+
+      json_t *result_json_obj = json_object();
+
+      mxml_node_t *feed_mxml;
+      mxml_node_t *episode;
+
+      time_t time_now;
+      time(&time_now);
+      double range = -1;
+
+      json_t *podcast_json_obj = json_object();
+      json_t *episodes_json_arr = json_array();
+
+      int i;
+      for (i = 0; i < query_params_len; i++) {
+        if (strcmp(query_params[i].key, "id") == 0) {
+          json_object_set_new(podcast_json_obj, "id",
+                              json_integer(atoi(query_params[i].val)));
+          select_feed(&feed, atoi(query_params[i].val));
+        }
+        if (strcmp(query_params[i].key, "range") == 0 &&
+            strcmp(query_params[i].val, "all") != 0) {
+          range = atof(query_params[i].val);
+        }
+      }
+
+      struct membuf feed_xml;
+      feed_xml.string = malloc(1);
+      feed_xml.size = 0;
+
+      CURL *curl_handle = NULL;
+      curl_handle = curl_easy_init();
+      curl_easy_setopt(curl_handle, CURLOPT_URL, feed.uri);
+
+      /* follow redirects */
+      curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
+
+      curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION,
+                       get_feed_xml_write_callback);
+      curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&feed_xml);
+
+      curl_easy_perform(curl_handle);
+
+      curl_easy_cleanup(curl_handle);
+
+      /* MXML_OPAQUE_CALLBACK needs to be used, otherwise mxml will stop
+       * processing the node after the first space character*/
+      feed_mxml = mxmlLoadString(NULL, feed_xml.string, MXML_OPAQUE_CALLBACK);
+      free(feed_xml.string);
+
+      mxml_node_t *podcast_title = mxmlFindPath(feed_mxml, "rss/channel/title");
+      json_object_set_new(podcast_json_obj, "title",
+                          json_string(mxmlGetOpaque(podcast_title)));
+      mxmlDelete(podcast_title);
+
+      struct tm tm_publish;
+      memset(&tm_publish, 0, sizeof(struct tm));
+
+      for (episode = mxmlFindElement(feed_mxml, feed_mxml, "item", NULL, NULL,
+                                     MXML_DESCEND);
+           episode != NULL;
+           episode = mxmlFindElement(episode, feed_mxml, "item", NULL, NULL,
+                                     MXML_DESCEND)) {
+        json_t *episode_json = json_object();
+        mxml_node_t *episode_detail;
+
+        if (range != -1) {
+          /* test if episode was published in the last range days, don't include
+           * episode otherwise */
+          episode_detail = mxmlFindPath(episode, "pubDate");
+          const char *pubdate_str = mxmlGetOpaque(episode_detail);
+
+          /*
+            pubdate_str format like "Sat, 20 Aug 2016 20:54:24 +0200"
+            as an alternative to strptime something like the following could be
+            used:
+             char month[4];
+             int day, year;
+             sscanf(
+               pubdate_str,
+               "%*s %d %s %d %*d:%*d:%*d %*s",
+               &day,
+               month,
+               &year
+             );
+          */
+          if (strptime(pubdate_str, "%a, %0d %b %Y %T %z", &tm_publish) !=
+              NULL) {
+            double time_diff = difftime(time_now, mktime(&tm_publish));
+            if (time_diff / 86400.0 > range) {
+              break;
+            }
+          } else if (strptime(pubdate_str, "%a, %0d %b %Y %T %Z",
+                              &tm_publish) != NULL) {
+            double time_diff = difftime(time_now, mktime(&tm_publish));
+            if (time_diff / 86400.0 > range) {
+              break;
+            }
+          } else {
+            printf("unsupported time format: %s\n", pubdate_str);
+            break;
+          }
+        }
+
+        episode_detail = mxmlFindPath(episode, "title");
+        json_object_set_new(episode_json, "title",
+                            json_string(mxmlGetOpaque(episode_detail)));
+
+        episode_detail = mxmlFindPath(episode, "itunes:duration");
+        json_object_set_new(episode_json, "duration",
+                            json_string(mxmlGetOpaque(episode_detail)));
+
+        episode_detail = mxmlFindPath(episode, "description");
+        mxml_node_t *cdata = NULL;
+        cdata = mxmlGetFirstChild(episode_detail);
+        if (cdata != NULL) {
+          json_object_set_new(episode_json, "description",
+                              json_string(mxmlGetCDATA(cdata)));
+        } else {
+          json_object_set_new(episode_json, "description",
+                              json_string(mxmlGetOpaque(episode_detail)));
+        }
+        mxmlDelete(cdata);
+
+        episode_detail = mxmlFindPath(episode, "enclosure");
+        const char *url = mxmlElementGetAttr(episode_detail, "url");
+        json_object_set_new(episode_json, "stream_uri", json_string(url));
+
+        mxmlDelete(episode_detail);
+
+        json_array_append_new(episodes_json_arr, episode_json);
+      }
+
+      json_object_set_new(podcast_json_obj, "episodes", episodes_json_arr);
+
+      mxmlDelete(episode);
+      mxmlDelete(feed_mxml);
+
+      json_object_set_new(result_json_obj, "podcast", podcast_json_obj);
 
       char *result_json_str = json_dumps(result_json_obj, JSON_COMPACT);
       mg_printf_http_chunk(connection, "%s", result_json_str);
