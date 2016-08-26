@@ -2,7 +2,12 @@
 
 case "$1" in
   start)
-    nohup ./tapd -s &
+    if [[ $(cat /etc/debian_version 2>/dev/null) =~ ^8 ]]
+    then
+      LD_LIBRARY_PATH=dep/lib nohup ./tapd -s &
+    else
+      nohup ./tapd -s &
+    fi
     ;;
   stop)
     echo -n "stop... "

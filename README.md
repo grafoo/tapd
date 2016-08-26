@@ -21,7 +21,10 @@ sudo apt-get install \
   make \
   sqlite3
 ```
-libgrss install on debian as libgrss-0.5 in pkg-config
+
+### jessie
+debian jessie is using mxml 2.6 where the api differes quite a lot.
+therefore mxml needs to be built from sources which are available at http://www.msweet.org/files/project3/mxml-2.10.tar.gz
 
 ## opensuse
 ```

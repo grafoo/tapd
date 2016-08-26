@@ -7,7 +7,11 @@
 #include <glib.h>
 #include <gst/gst.h>
 #include <jansson.h>
+#ifdef OS_DEBIAN_JESSIE
+#include "../dep/include/mxml.h"
+#else
 #include <mxml.h>
+#endif
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -366,6 +370,11 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
         curl_handle = curl_easy_init();
         curl_easy_setopt(curl_handle, CURLOPT_URL, feeds[i].uri);
 
+        /* skip tls verifications for now
+         * without these options requests on debian jessie armv7l are failing*/
+        curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
+
         /* follow redirects */
         curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 
@@ -522,6 +531,11 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       CURL *curl_handle = NULL;
       curl_handle = curl_easy_init();
       curl_easy_setopt(curl_handle, CURLOPT_URL, feed.uri);
+
+      /* skip tls verifications for now
+       * without these options requests on debian jessie armv7l are failing*/
+      curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
+      curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
 
       /* follow redirects */
       curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
