@@ -56,7 +56,7 @@ however, as a resolution the public repo on github has been added to this repo a
 
 ## ui
 ### svg audio buttons
-http://www.flaticon.com/authors/daniele-de-santis
+http://www.flaticon.com/authors/daniele-de-santis released under https://creativecommons.org/licenses/by/3.0/
 
 #docs
 
