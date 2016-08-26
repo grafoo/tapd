@@ -83,6 +83,9 @@ struct query_param {
 void extract_params(struct query_param **query_params, char *query_string,
                     size_t *query_params_len);
 
+void seek_audio_forward();
+void seek_audio_backward();
+
 size_t icy_meta_header_callback(char *data, size_t size, size_t count,
                                 void *nouse) {
   size_t data_len = size * count;
@@ -669,6 +672,18 @@ static void handle_mongoose_event(struct mg_connection *connection, int event,
       mg_send_http_chunk(connection, "", 0);
 
       stop_audio();
+    } else if (mg_vcmp(&message->uri, "/forward") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+      mg_send_http_chunk(connection, "", 0);
+
+      seek_audio_forward();
+    } else if (mg_vcmp(&message->uri, "/backward") == 0) {
+      mg_printf(connection, "HTTP/1.1 200 OK\r\n"
+                            "Transfer-Encoding: chunked\r\n\r\n");
+      mg_send_http_chunk(connection, "", 0);
+
+      seek_audio_backward();
     } else {
       /* serve document root */
       mg_serve_http(connection, message, mongoose_http_server_options);
@@ -747,6 +762,22 @@ void pause_audio() {
 }
 
 void stop_audio() { g_main_loop_quit(loop); }
+
+void seek_audio_forward() {
+  gint64 current_position = 0;
+  gst_element_query_position(pipeline, GST_FORMAT_TIME, &current_position);
+  gst_element_seek(pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
+                   GST_SEEK_TYPE_SET, current_position + 30000000000,
+                   GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+}
+
+void seek_audio_backward() {
+  gint64 current_position = 0;
+  gst_element_query_position(pipeline, GST_FORMAT_TIME, &current_position);
+  gst_element_seek(pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
+                   GST_SEEK_TYPE_SET, current_position - 30000000000,
+                   GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+}
 
 int main(int argc, char **argv) {
   if (strcmp("-i", argv[1]) == 0) {

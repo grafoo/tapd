@@ -91,6 +91,18 @@ function stop() {
   xhr.send();
 }
 
+function forward() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/forward', true);
+  xhr.send();
+}
+
+function backward() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/backward', true);
+  xhr.send();
+}
+
 function toggleMenu() {
   var menuItems = document.getElementById('menu-items');
   var menuButton = document.getElementById('menu-button');

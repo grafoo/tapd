@@ -15,12 +15,14 @@
   <div id="menu-button" onclick="toggleMenu();">&#8857;</div>
   <ul id="menu-items" class="hidden">
     <li>
-      <span id="play" onclick="play();">&#9656;</span>
-      <span id="pause" onclick="pause();">&#9611;&#9611;</span>
-      <span id="stop" onclick="stop();">&#9724;</button></span>
+      <img class="audio-button" src="backward.svg" onclick="backward();"/>
+      <img class="audio-button" src="play.svg" onclick="play();"/>
+      <img class="audio-button" src="pause.svg" onclick="pause();"/>
+      <img class="audio-button" src="stop.svg" onclick="stop();"/>
+      <img class="audio-button" src="forward.svg" onclick="forward();"/>
     </li>
     <li>
-      <label for="uri">stream-uri</label>
+      <label for="uri">stream uri</label>
       <input id="uri" type="text"/>
     </li>
   </ul>

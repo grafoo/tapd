@@ -54,6 +54,10 @@ after building mpg123 dependecies tapd can be started like e.g. `LD_LIBRARY_PATH
 linking to mongoose does not work. maybe they don't wan't it to work due to a licensing issue with gpl?
 however, as a resolution the public repo on github has been added to this repo as a submodule and mongoose.c will be complied when tapd is built.
 
+## ui
+### svg audio buttons
+http://www.flaticon.com/authors/daniele-de-santis
+
 #docs
 
 ## mxml
