@@ -26,13 +26,20 @@ do
   tail -n 1 "$stream_file" | {
     read stream_title
     printf "%s\n" \
+      "HTTP/1.1 200 OK" \
+      "Content-Type: text/html; charset=UTF-8" \
+      "Connection: close" \
+      "" \
       "<!DOCTYPE html>" \
       "<html>" \
-      "<body>" \
-      "<center><font size=\"7\">" \
-        "$stream_title" \
-      "</font></center>" \
-      "</body>" \
+        "<head>" \
+          "<title>${stream_name}</title>" \
+        "</head>" \
+        "<body>" \
+          "<center><font size=\"7\">" \
+            "$stream_title" \
+          "</font></center>" \
+        "</body>" \
       "</html>" |
     $srv
   }
