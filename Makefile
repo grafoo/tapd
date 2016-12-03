@@ -9,3 +9,6 @@ endif
 
 clean:
 	rm tapd
+
+shoutr:
+	$(CC) -Wall -oshoutr -lcurl src/shoutr.c

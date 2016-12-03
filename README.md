@@ -88,6 +88,9 @@ to illustrate this, lets say the metadata length identifier will be located in i
 
 further information on the protocol can be found on http://www.smackfu.com/stuff/programming/shoutcast.html.
 
+### usage example
+./shoutr.sh core "http://194.58.97.117:8000/coreradio" 0.0.0.0 9090
+
 #todos
 
 - [ ] add logo consisting of a bar with multiple beer taps labled like "podcast", "webradio" and a audio jack cable plugged in
