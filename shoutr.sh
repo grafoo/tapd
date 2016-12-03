@@ -9,6 +9,13 @@ port="$4"
 
 stream_file="${stream_name}.out"
 
+if $(nc -h 2>&1 | head -n 1 | grep -q "^OpenBSD.*$")
+then
+  srv="nc -l $address $port"
+else
+  srv="nc -l -s $address -p $port"
+fi
+
 shoutr "$stream_url" >> "$stream_file" &
 shoutr_pid=$!
 
@@ -20,11 +27,13 @@ do
     read stream_title
     printf "%s\n" \
       "<!DOCTYPE html>" \
+      "<html>" \
       "<body>" \
       "<center><font size=\"7\">" \
         "$stream_title" \
       "</font></center>" \
-      "</body>" |
-    nc -l $address $port
+      "</body>" \
+      "</html>" |
+    $srv
   }
 done
