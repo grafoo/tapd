@@ -8,6 +8,10 @@ import sqlite3
 import sys
 import threading
 import os
+import urllib2
+from xml.etree import ElementTree
+import threading
+import Queue
 
 
 def gstreamer_bus_callback(bus, message):
@@ -30,6 +34,22 @@ class TapdHandler(BaseHTTPRequestHandler):
 
     player = Gst.Element
 
+    def get_rss_xml(self, queue, podcast_id, uri):
+        try:
+            request = urllib2.Request(uri, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36'})
+            xmlroot = ElementTree.fromstring(urllib2.urlopen(request).read())
+            podcast = {'id': podcast_id, 'title': xmlroot.find('channel/title').text, 'episodes': []}
+            for item in xmlroot.findall('channel/item'):
+                episode = {'title': item.find('title').text}
+                episode['description'] = item.find('description').text
+                episode['stream_uri'] = item.find('enclosure').get('url')
+                podcast['duration'] = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}duration').text
+                podcast['episodes'].append(episode)
+            queue.put(podcast)
+        except Exception as e:
+            print threading.current_thread(), e, uri
+
+
     def do_GET(self):
         if self.path == '/':
             self.send_response(200)
@@ -46,6 +66,31 @@ class TapdHandler(BaseHTTPRequestHandler):
             response = {'radios': [{'name': name, 'stream_uri': uri} for name, uri in cursor.execute('select name, stream_uri from radios')]}
             db.close()
             self.wfile.write(json.dumps(response))
+        elif self.path == '/podcasts':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            db = sqlite3.connect('tapd.db')
+            cursor = db.cursor()
+
+            podcasts = []
+
+            queue = Queue.Queue()
+
+            threads = []
+            for podcast_id, uri in cursor.execute('select id, uri from feeds'):
+                thread = threading.Thread(target=self.get_rss_xml, args=(queue, podcast_id, uri,))
+                threads.append(thread)
+                thread.start()
+
+            [thread.join() for thread in threads]
+
+            while not queue.empty():
+                podcasts.append(queue.get())
+
+            db.close()
+
+            self.wfile.write(json.dumps({'podcasts': podcasts}))
         elif self.path == '/stop':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
@@ -91,7 +136,7 @@ if __name__ == '__main__':
         tapdHandler.player = player
 
 
-        httpServer = HTTPServer(('', 8080), tapdHandler)
+        httpServer = HTTPServer(('', 8000), tapdHandler)
         httpServer.serve_forever()
     except KeyboardInterrupt as e:
         pass
