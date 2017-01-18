@@ -14,15 +14,22 @@ import threading
 import Queue
 
 
-def gstreamer_bus_callback(bus, message):
-    if message.type == Gst.MessageType.EOS:
-        pass
+class Gstreamer(object):
+    def __init__(self, player=Gst.Element, loop=GLib.MainLoop):
+        self.player = player
+        self.loop = loop
+        self.bus = Gst.Bus
 
-def gstreamer_run(player, loop):
-    bus = player.get_bus()
-    bus.add_signal_watch()
-    bus.connect('message', gstreamer_bus_callback)
-    loop.run()
+    def __call__(self, *args, **kwargs):
+        self.bus = player.get_bus()
+        self.bus.add_signal_watch()
+        self.bus.connect('message', self.gstreamer_bus_callback)
+        self.loop.run()
+
+    def gstreamer_bus_callback(self, bus, message):
+        if message.type == Gst.MessageType.EOS:
+            self.player.set_state(Gst.State.NULL)
+
 
 class TapdHandler(BaseHTTPRequestHandler):
     mediatypes = {
@@ -32,7 +39,7 @@ class TapdHandler(BaseHTTPRequestHandler):
         'svg': 'image/svg+xml'
     }
 
-    player = Gst.Element
+    gstreamer = Gstreamer
 
     def get_rss_xml(self, queue, podcast_id, uri):
         try:
@@ -95,34 +102,43 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            self.player.set_state(Gst.State.NULL)
-            self.wfile.write("stopped.")
+            self.gstreamer.player.set_state(Gst.State.NULL)
+            self.wfile.write('stopped.')
         elif self.path == '/forward':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            current_position = self.player.query_position(Gst.Format.TIME)
-            duration = self.player.query_duration(Gst.Format.TIME)
+            current_position = self.gstreamer.player.query_position(Gst.Format.TIME)
+            duration = self.gstreamer.player.query_duration(Gst.Format.TIME)
             if current_position[0] and duration[0]:
                 new_position = current_position[1] + 30 * Gst.SECOND
                 if new_position < duration:
-                    self.player.seek_simple(Gst.Format.TIME,
+                    self.gstreamer.player.seek_simple(Gst.Format.TIME,
                                             Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
                                             new_position)
-            self.wfile.write("")
+            self.wfile.write('')
         elif self.path == '/backward':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            current_position = self.player.query_position(Gst.Format.TIME)
+            current_position = self.gstreamer.player.query_position(Gst.Format.TIME)
             if current_position[0]:
                 new_position = current_position[1] - 30 * Gst.SECOND
                 if new_position < 0:
                     new_position = 0
-                    self.player.seek_simple(Gst.Format.TIME,
+                    self.gstreamer.player.seek_simple(Gst.Format.TIME,
                                             Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
                                             new_position)
-            self.wfile.write("")
+            self.wfile.write('')
+        elif self.path == '/pause':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            if self.gstreamer.player.get_state(Gst.CLOCK_TIME_NONE)[1] == Gst.State.PLAYING:
+                self.gstreamer.player.set_state(Gst.State.PAUSED)
+            elif self.gstreamer.player.get_state(Gst.CLOCK_TIME_NONE)[1] == Gst.State.PAUSED:
+                self.gstreamer.player.set_state(Gst.State.PLAYING)
+            self.wfile.write('')
         else:
             try:
                 mediatype = self.path.split('.')
@@ -142,9 +158,9 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
             uri = self.rfile.read(int(self.headers.getheader('Content-Length'))).split('=')[1]
-            self.wfile.write('foo')
-            self.player.set_property('uri', uri)
-            self.player.set_state(Gst.State.PLAYING)
+            self.wfile.write('')
+            self.gstreamer.player.set_property('uri', uri)
+            self.gstreamer.player.set_state(Gst.State.PLAYING)
 
 
 if __name__ == '__main__':
@@ -156,10 +172,11 @@ if __name__ == '__main__':
         Gst.init(None)
         loop = GLib.MainLoop()
         player = Gst.ElementFactory.make('playbin', None)
-        threading.Thread(target=gstreamer_run, args=(player, loop,)).start()
+        gstreamer = Gstreamer(player, loop)
+        threading.Thread(target=gstreamer).start()
 
         tapdHandler = TapdHandler
-        tapdHandler.player = player
+        tapdHandler.gstreamer = gstreamer
 
 
         httpServer = HTTPServer(('', 8000), tapdHandler)
