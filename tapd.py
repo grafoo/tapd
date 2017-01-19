@@ -5,8 +5,6 @@ import gi; gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib, GObject
 import json
 import sqlite3
-import sys
-import threading
 import os
 import urllib2
 from xml.etree import ElementTree
@@ -15,16 +13,20 @@ import Queue
 
 
 class Gstreamer(object):
-    def __init__(self, player=Gst.Element, loop=GLib.MainLoop):
+    def __init__(self, player=Gst.Element, loop=GLib.MainLoop, queue=Queue.Queue):
         self.player = player
         self.loop = loop
         self.bus = Gst.Bus
+        self.queue = queue
 
     def __call__(self, *args, **kwargs):
-        self.bus = player.get_bus()
-        self.bus.add_signal_watch()
-        self.bus.connect('message', self.gstreamer_bus_callback)
-        self.loop.run()
+        try:
+            self.bus = player.get_bus()
+            self.bus.add_signal_watch()
+            self.bus.connect('message', self.gstreamer_bus_callback)
+            self.loop.run()
+        except KeyboardInterrupt as e:
+            self.queue.put(e)
 
     def gstreamer_bus_callback(self, bus, message):
         if message.type == Gst.MessageType.EOS:
@@ -114,8 +116,8 @@ class TapdHandler(BaseHTTPRequestHandler):
                 new_position = current_position[1] + 30 * Gst.SECOND
                 if new_position < duration:
                     self.gstreamer.player.seek_simple(Gst.Format.TIME,
-                                            Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
-                                            new_position)
+                                                      Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
+                                                      new_position)
             self.wfile.write('')
         elif self.path == '/backward':
             self.send_response(200)
@@ -126,9 +128,9 @@ class TapdHandler(BaseHTTPRequestHandler):
                 new_position = current_position[1] - 30 * Gst.SECOND
                 if new_position < 0:
                     new_position = 0
-                    self.gstreamer.player.seek_simple(Gst.Format.TIME,
-                                            Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
-                                            new_position)
+                self.gstreamer.player.seek_simple(Gst.Format.TIME,
+                                                  Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
+                                                  new_position)
             self.wfile.write('')
         elif self.path == '/pause':
             self.send_response(200)
@@ -163,6 +165,13 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.gstreamer.player.set_state(Gst.State.PLAYING)
 
 
+def run_httpserver(server):
+    try:
+        httpServer.serve_forever()
+    except:
+        pass
+
+
 if __name__ == '__main__':
     try:
         with open('tapd.pid', 'w') as pid_file:
@@ -172,17 +181,22 @@ if __name__ == '__main__':
         Gst.init(None)
         loop = GLib.MainLoop()
         player = Gst.ElementFactory.make('playbin', None)
-        gstreamer = Gstreamer(player, loop)
+        queue = Queue.Queue()
+        gstreamer = Gstreamer(player, loop, queue)
         threading.Thread(target=gstreamer).start()
 
         tapdHandler = TapdHandler
         tapdHandler.gstreamer = gstreamer
 
-
         httpServer = HTTPServer(('', 8000), tapdHandler)
-        httpServer.serve_forever()
-    except KeyboardInterrupt as e:
-        pass
+        threading.Thread(target=run_httpserver, args=(httpServer,)).start()
+
+        while queue.empty():
+            pass
+
+        raise queue.get()
+    except KeyboardInterrupt:
+        print('')
     finally:
         loop.quit()
         httpServer.socket.close()
