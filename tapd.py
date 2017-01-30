@@ -10,6 +10,8 @@ import urllib2
 from xml.etree import ElementTree
 import threading
 import Queue
+import time
+import urlparse
 
 
 class Gstreamer(object):
@@ -43,24 +45,34 @@ class TapdHandler(BaseHTTPRequestHandler):
 
     gstreamer = Gstreamer
 
-    def get_rss_xml(self, queue, podcast_id, uri):
+    def get_episode(self, item):
+        episode = {'title': item.find('title').text}
+        episode['description'] = item.find('description').text
+        episode['stream_uri'] = item.find('enclosure').get('url')
+        episode['duration'] = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}duration').text
+        return episode
+
+    def get_rss_xml(self, queue, podcast_id, uri, all=False):
         try:
             request = urllib2.Request(uri, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36'})
             xmlroot = ElementTree.fromstring(urllib2.urlopen(request).read())
             podcast = {'id': podcast_id, 'title': xmlroot.find('channel/title').text, 'episodes': []}
             for item in xmlroot.findall('channel/item'):
-                episode = {'title': item.find('title').text}
-                episode['description'] = item.find('description').text
-                episode['stream_uri'] = item.find('enclosure').get('url')
-                episode['duration'] = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}duration').text
-                podcast['episodes'].append(episode)
+                if all:
+                    podcast['episodes'].append(self.get_episode(item))
+                else:
+                    pubdate_notz = ' '.join(item.find('pubDate').text.split(' ')[:-1])
+                    pubdate_diff_now = time.time() - time.mktime(time.strptime(pubdate_notz, '%a, %d %b %Y %X'))
+                    if pubdate_diff_now / 86400.0 < 30.0:
+                        podcast['episodes'].append(self.get_episode(item))
             queue.put(podcast)
         except Exception as e:
             print threading.current_thread(), e, uri
 
 
     def do_GET(self):
-        if self.path == '/':
+        path_parsed = urlparse.urlparse(self.path)
+        if path_parsed.path == '/':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
@@ -100,6 +112,23 @@ class TapdHandler(BaseHTTPRequestHandler):
             db.close()
 
             self.wfile.write(json.dumps({'podcasts': podcasts}))
+        elif path_parsed.path.split('/')[1] == 'podcast':
+            if path_parsed.path.split('/')[2] == 'episodes':
+                query = urlparse.parse_qs(urlparse.urlparse(self.path).query)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                db = sqlite3.connect('tapd.db')
+                cursor = db.cursor()
+                cursor.execute('select uri from feeds where id=?', query['id'])
+                uri = cursor.fetchone()[0]
+                queue = Queue.Queue()
+                thread = threading.Thread(target=self.get_rss_xml, args=(queue, query['id'], uri, True))
+                thread.start()
+                thread.join()
+                podcast = queue.get()
+                db.close()
+                self.wfile.write(json.dumps({'podcast': podcast}))
         elif self.path == '/stop':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
@@ -192,11 +221,13 @@ if __name__ == '__main__':
         threading.Thread(target=run_httpserver, args=(httpServer,)).start()
 
         while queue.empty():
-            pass
+            time.sleep(1)
 
         raise queue.get()
     except KeyboardInterrupt:
-        print('')
+        print(' sigint killed the radio star...')
+    except Exception as e:
+        print(e)
     finally:
         loop.quit()
         httpServer.socket.close()
