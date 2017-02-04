@@ -50,6 +50,7 @@ class TapdHandler(BaseHTTPRequestHandler):
         episode['description'] = item.find('description').text
         episode['stream_uri'] = item.find('enclosure').get('url')
         episode['duration'] = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}duration').text
+        episode['content'] = item.find('{http://purl.org/rss/1.0/modules/content/}encoded').text
         return episode
 
     def get_rss_xml(self, queue, podcast_id, uri, all=False):
