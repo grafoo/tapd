@@ -16,5 +16,8 @@ create table radios (
   id integer primary key autoincrement,
   name text not null,
   url text not null,
-  stream_uri text not null
+  stream_protocol text not null,
+  stream_host text not null,
+  stream_port integer not null,
+  stream_url text not null
 );

@@ -12,6 +12,8 @@ import threading
 from queue import Queue
 import time
 import urllib.parse
+from http import client
+import re
 
 
 class Gstreamer(object):
@@ -20,6 +22,8 @@ class Gstreamer(object):
         self.loop = loop
         self.bus = Gst.Bus
         self.queue = queue
+        self.stream_uri = ''
+        self.radio_id = 0
 
     def __call__(self, *args, **kwargs):
         try:
@@ -33,6 +37,8 @@ class Gstreamer(object):
     def gstreamer_bus_callback(self, bus, message):
         if message.type == Gst.MessageType.EOS:
             self.player.set_state(Gst.State.NULL)
+            self.stream_uri = ''
+            self.radio_id = 0
 
 
 class TapdHandler(BaseHTTPRequestHandler):
@@ -70,6 +76,45 @@ class TapdHandler(BaseHTTPRequestHandler):
         except Exception as e:
             print(threading.current_thread(), e, uri)
 
+    def poll_icy_metadata(self, protocol='http', host='', port=80, url='', queue=Queue):
+        # todo: run this as a permanent thread when radio is playing
+        try:
+            connection = client.HTTPConnection(host, port=port)
+            connection.request('GET', url, headers={'Icy-MetaData': 1})
+            response = connection.getresponse()
+            metaint = int(dict(response.getheaders())['icy-metaint'])
+            pattern = re.compile(r"StreamTitle='(.+)';")
+            while True:
+                metalen = response.read(metaint + 1)[-1]
+                if metalen > 0:
+                    metadata = response.read(metalen * 16).decode('utf-8')
+                    match = pattern.match(metadata)
+                    if match:
+                        stream_title = match.group(1)
+                        queue.put(stream_title)
+        except:
+            pass
+        finally:
+            connection.close()
+
+    def get_icy_metadata(self, protocol='http', host='', port=80, url='', queue=Queue):
+        try:
+            connection = client.HTTPConnection(host, port=port)
+            connection.request('GET', url, headers={'Icy-MetaData': 1})
+            response = connection.getresponse()
+            metaint = int(dict(response.getheaders())['icy-metaint'])
+            pattern = re.compile(r"StreamTitle='(.+)';")
+            metalen = response.read(metaint + 1)[-1]
+            if metalen > 0:
+                metadata = response.read(metalen * 16).decode('utf-8')
+                match = pattern.match(metadata)
+                if match:
+                    stream_title = match.group(1)
+                    queue.put(stream_title)
+        except:
+            pass
+        finally:
+            connection.close()
 
     def do_GET(self):
         path_parsed = urllib.parse.urlparse(self.path)
@@ -85,7 +130,7 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.end_headers()
             db = sqlite3.connect('tapd.db')
             cursor = db.cursor()
-            response = {'radios': [{'name': name, 'stream_uri': uri} for name, uri in cursor.execute('select name, stream_uri from radios')]}
+            response = {'radios': [{'id': id, 'name': name} for id, name in cursor.execute('select id, name from radios')]}
             db.close()
             self.wfile.write(json.dumps(response).encode('UTF-8'))
         elif self.path == '/podcasts':
@@ -105,7 +150,7 @@ class TapdHandler(BaseHTTPRequestHandler):
                 threads.append(thread)
                 thread.start()
 
-            [thread.join() for thread in threads]
+            for thread in threads: thread.join()
 
             while not fetcher_queue.empty():
                 podcasts.append(fetcher_queue.get())
@@ -135,6 +180,8 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
             self.gstreamer.player.set_state(Gst.State.NULL)
+            self.gstreamer.stream_uri = ''
+            self.gstreamer.radio_id = 0
             self.wfile.write('stopped.'.encode('UTF-8'))
         elif self.path == '/forward':
             self.send_response(200)
@@ -171,6 +218,27 @@ class TapdHandler(BaseHTTPRequestHandler):
             elif self.gstreamer.player.get_state(Gst.CLOCK_TIME_NONE)[1] == Gst.State.PAUSED:
                 self.gstreamer.player.set_state(Gst.State.PLAYING)
             self.wfile.write(''.encode('UTF-8'))
+        elif self.path == '/streaminfo':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            if self.gstreamer.radio_id > 0:
+                db = sqlite3.connect('tapd.db')
+                cursor = db.cursor()
+                protocol, host, port, url = cursor.execute(
+                    'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
+                    (self.gstreamer.radio_id,)
+                ).fetchone()
+                db.close()
+                fetcher_queue = Queue()
+                thread = threading.Thread(target=self.get_icy_metadata, args=(protocol, host, port, url, fetcher_queue,))
+                thread.start()
+                thread.join()
+                streaminfo = {'title': fetcher_queue.get()}
+                self.wfile.write(json.dumps(streaminfo).encode('UTF-8'))
+            else:
+                streaminfo = {'title': self.gstreamer.stream_uri}
+                self.wfile.write(json.dumps(streaminfo).encode('UTF-8'))
         else:
             try:
                 mediatype = self.path.split('.')
@@ -193,13 +261,30 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.wfile.write(''.encode('UTF-8'))
             self.gstreamer.player.set_property('uri', uri)
             self.gstreamer.player.set_state(Gst.State.PLAYING)
+            self.gstreamer.stream_uri = uri
+        elif self.path == '/playradio':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            radio_id = int(self.rfile.read(int(self.headers.get('Content-Length'))).decode('UTF-8').split('=')[1])
+            self.wfile.write(''.encode('UTF-8'))
+            db = sqlite3.connect('tapd.db')
+            cursor = db.cursor()
+            protocol, host, port, url = cursor.execute(
+                'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
+                (radio_id,)
+            ).fetchone()
+            db.close()
+            self.gstreamer.player.set_property('uri', '{0}://{1}:{2}{3}'.format(protocol, host, port,url))
+            self.gstreamer.player.set_state(Gst.State.PLAYING)
+            self.gstreamer.radio_id = radio_id
+
+    def log_message(self, format, *args): pass
 
 
 def run_httpserver(server):
-    try:
-        httpServer.serve_forever()
-    except:
-        pass
+    try: httpServer.serve_forever()
+    except: pass
 
 
 if __name__ == '__main__':
@@ -226,9 +311,11 @@ if __name__ == '__main__':
 
         raise queue.get()
     except KeyboardInterrupt:
+        httpServer.shutdown()
         print(' sigint killed the radio star...')
     except Exception as e:
         print(e)
     finally:
         loop.quit()
         httpServer.socket.close()
+

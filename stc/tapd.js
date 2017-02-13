@@ -1,6 +1,19 @@
 function init() {
   getRadios();
   getPodcasts();
+  pollStreamTitle();
+}
+
+function pollStreamTitle() {
+  id = window.setInterval(getStreamTitle, 1000);
+}
+
+function getStreamTitle() {
+  window.fetch('/streaminfo').then(function(response){
+    return response.json();
+  }).then(function(streaminfo){
+    document.getElementById('now-playing').value = streaminfo.title;
+  });
 }
 
 function getRadios() {
@@ -13,7 +26,7 @@ function getRadios() {
       for (radio of xhr.response.radios) {
         var newRadio = document.createElement('li');
         var newPlayRadio = document.createElement('a');
-        newPlayRadio.href = 'javascript:play("' + radio.stream_uri + '");';
+        newPlayRadio.href = 'javascript:playradio("' + radio.id + '");';
         newPlayRadio.innerHTML = radio.name;
         newRadio.appendChild(newPlayRadio);
         radios.appendChild(newRadio);
@@ -82,6 +95,12 @@ function play(uri) {
   var xhr = new XMLHttpRequest();
   xhr.open('POST', '/play', true);
   xhr.send('uri=' + uri);
+}
+
+function playradio(id) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/playradio', true);
+  xhr.send('id=' + id);
 }
 
 function pause() {
