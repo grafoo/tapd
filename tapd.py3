@@ -102,17 +102,22 @@ class TapdHandler(BaseHTTPRequestHandler):
             connection = client.HTTPConnection(host, port=port)
             connection.request('GET', url, headers={'Icy-MetaData': 1})
             response = connection.getresponse()
-            metaint = int(dict(response.getheaders())['icy-metaint'])
-            pattern = re.compile(r"StreamTitle='(.+)';")
-            metalen = response.read(metaint + 1)[-1]
-            if metalen > 0:
-                metadata = response.read(metalen * 16).decode('utf-8')
-                match = pattern.match(metadata)
-                if match:
-                    stream_title = match.group(1)
-                    queue.put(stream_title)
-        except:
-            pass
+            headers = dict(response.getheaders())
+            if 'icy-metaint' in headers.keys():
+                metaint = int(headers['icy-metaint'])
+                pattern = re.compile(r"StreamTitle='(.+)';")
+                metalen = response.read(metaint + 1)[-1]
+                if metalen > 0:
+                    metadata = response.read(metalen * 16).decode('utf-8')
+                    match = pattern.match(metadata)
+                    if match:
+                        stream_title = match.group(1)
+                        queue.put(stream_title)
+            else:
+                queue.put('no icy metadata')
+        except Exception as e:
+            print('getting metadata for {0} failed with {1}'.format(host, e))
+            queue.put('no icy metadata')
         finally:
             connection.close()
 
