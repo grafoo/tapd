@@ -73,8 +73,7 @@ class TapdHandler(BaseHTTPRequestHandler):
                     if pubdate_diff_now / 86400.0 < 30.0:
                         podcast['episodes'].append(self.get_episode(item))
             queue.put(podcast)
-        except Exception as e:
-            print(threading.current_thread(), e, uri)
+        except: pass
 
     def poll_icy_metadata(self, protocol='http', host='', port=80, url='', queue=Queue):
         # todo: run this as a permanent thread when radio is playing
