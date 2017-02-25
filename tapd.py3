@@ -204,7 +204,7 @@ class TapdHandler(BaseHTTPRequestHandler):
             duration = self.gstreamer.player.query_duration(Gst.Format.TIME)
             if current_position[0] and duration[0]:
                 new_position = current_position[1] + 30 * Gst.SECOND
-                if new_position < duration:
+                if new_position < duration[1]:
                     self.gstreamer.player.seek_simple(Gst.Format.TIME,
                                                       Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
                                                       new_position)
