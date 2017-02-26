@@ -14,6 +14,9 @@ import time
 import urllib.parse
 from http import client
 import re
+from socketserver import ThreadingMixIn
+import base64
+from hashlib import sha1
 
 
 class Gstreamer(object):
@@ -27,7 +30,7 @@ class Gstreamer(object):
 
     def __call__(self, *args, **kwargs):
         try:
-            self.bus = player.get_bus()
+            self.bus = self.player.get_bus()
             self.bus.add_signal_watch()
             self.bus.connect('message', self.gstreamer_bus_callback)
             self.loop.run()
@@ -55,16 +58,16 @@ class TapdHandler(BaseHTTPRequestHandler):
         episode = {'title': item.find('title').text}
 
         description = item.find('description')
-        if description: episode['description'] = description.text
+        if description is not None: episode['description'] = description.text
 
         stream_uri = item.find('enclosure').get('url')
-        if stream_uri: episode['stream_uri'] = stream_uri
+        if stream_uri is not None: episode['stream_uri'] = stream_uri
 
         duration = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}duration')
-        if duration: episode['duration'] = duration.text
+        if duration is not None: episode['duration'] = duration.text
 
         content = item.find('{http://purl.org/rss/1.0/modules/content/}encoded')
-        if content: episode['content'] = content.text
+        if content is not None: episode['content'] = content.text
 
         return episode
 
@@ -128,6 +131,22 @@ class TapdHandler(BaseHTTPRequestHandler):
             queue.put('no icy metadata')
         finally:
             connection.close()
+
+    def get_streaminfo(self):
+        if self.gstreamer.radio_id > 0:
+            db = sqlite3.connect('tapd.db')
+            cursor = db.cursor()
+            protocol, host, port, url = cursor.execute(
+                'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
+                (self.gstreamer.radio_id,)
+            ).fetchone()
+            db.close()
+            fetcher_queue = Queue()
+            thread = threading.Thread(target=self.get_icy_metadata, args=(protocol, host, port, url, fetcher_queue,))
+            thread.start()
+            thread.join()
+            return {'title': fetcher_queue.get()}
+        else: return {'title': self.gstreamer.stream_uri}
 
     def do_GET(self):
         path_parsed = urllib.parse.urlparse(self.path)
@@ -232,26 +251,51 @@ class TapdHandler(BaseHTTPRequestHandler):
                 self.gstreamer.player.set_state(Gst.State.PLAYING)
             self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/streaminfo':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            if self.gstreamer.radio_id > 0:
-                db = sqlite3.connect('tapd.db')
-                cursor = db.cursor()
-                protocol, host, port, url = cursor.execute(
-                    'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
-                    (self.gstreamer.radio_id,)
-                ).fetchone()
-                db.close()
-                fetcher_queue = Queue()
-                thread = threading.Thread(target=self.get_icy_metadata, args=(protocol, host, port, url, fetcher_queue,))
-                thread.start()
-                thread.join()
-                streaminfo = {'title': fetcher_queue.get()}
-                self.wfile.write(json.dumps(streaminfo).encode('UTF-8'))
+            sec_websocket_key = self.headers.get('Sec-WebSocket-Key')
+            if sec_websocket_key is not None:
+                websocket_magic_string = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+                hash = sha1()
+                foo = '{0}{1}'.format(sec_websocket_key, websocket_magic_string)
+                hash.update(bytes(foo.encode('UTF-8')))
+                sec_websocket_accept = base64.b64encode(hash.digest())
+                self.send_response(101)
+                self.send_header('Upgrade', 'websocket')
+                self.send_header('Connection', 'Upgrade')
+                self.send_header('Sec-WebSocket-Accept', sec_websocket_accept.decode('UTF-8'))
+                self.end_headers()
+                streaminfo = ''
+                while True:
+                    streaminfo_new = json.dumps(self.get_streaminfo())
+                    if streaminfo != streaminfo_new:
+                        streaminfo = streaminfo_new
+                        frame = bytearray()
+                        # todo: add handling payloads with greater length than 125
+
+                        # see https://tools.ietf.org/html/rfc6455#page-28 for details on the frame
+
+                        # bits from left to right (which make up the first byte):
+                        #   - FIN: 1 bit
+                        #   - RSV1, RSV2, RSV3: 1 bit each
+                        #   - Opcode: 4 bits (the 0x1 in this case denotes a text frame)
+                        frame.append(0b10000001)
+
+                        # another byte is made up from (also left to right):
+                        #   - Mask: 1 bit
+                        #   - Payload length: 7 bits (when payload length < 125)
+                        frame.append(len(streaminfo))
+
+                        #   ... some parts of the frame have been left out here because they are not needed
+
+                        #   - Application data (the remaining part of the frame)
+                        frame.extend(bytearray(streaminfo.encode('utf-8')))
+                        self.wfile.write(frame)
+                    time.sleep(1)
             else:
-                streaminfo = {'title': self.gstreamer.stream_uri}
-                self.wfile.write(json.dumps(streaminfo).encode('UTF-8'))
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(self.get_streaminfo()).encode('UTF-8'))
+
         else:
             try:
                 mediatype = self.path.split('.')
@@ -295,12 +339,14 @@ class TapdHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args): pass
 
 
-def run_httpserver(server):
-    try: httpServer.serve_forever()
-    except: pass
+def run_httpserver(server): server.serve_forever()
 
 
-if __name__ == '__main__':
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """threads ftw!"""
+
+
+def main():
     try:
         with open('tapd.pid', 'w') as pid_file:
             pid_file.write(str(os.getpid()) + os.linesep)
@@ -316,7 +362,8 @@ if __name__ == '__main__':
         tapdHandler = TapdHandler
         tapdHandler.gstreamer = gstreamer
 
-        httpServer = HTTPServer(('', 8000), tapdHandler)
+        httpServer = ThreadedHTTPServer(('localhost', 8000), tapdHandler)
+        httpServer.daemon_threads = True
         threading.Thread(target=run_httpserver, args=(httpServer,)).start()
 
         while queue.empty():
@@ -331,4 +378,7 @@ if __name__ == '__main__':
     finally:
         loop.quit()
         httpServer.socket.close()
+
+
+if __name__ == '__main__': main()
 

@@ -1,13 +1,23 @@
 function init() {
   getRadios();
   getPodcasts();
-  pollStreamTitle();
+  updateStreamTitle();
 }
 
+function updateStreamTitle() {
+  var ws = new WebSocket('ws://' + window.location.host + '/streaminfo');
+  ws.onmessage = function(event){
+    var streaminfo = JSON.parse(event.data);
+    document.getElementById('now-playing').value = streaminfo.title;
+  };
+}
+
+// deprecated
 function pollStreamTitle() {
   id = window.setInterval(getStreamTitle, 1000);
 }
 
+// deprecated
 function getStreamTitle() {
   window.fetch('/streaminfo').then(function(response){
     return response.json();
