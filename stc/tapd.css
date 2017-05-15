@@ -49,3 +49,7 @@
 .visible {
   display: block;
 }
+
+h1 {
+  font-size: 18px;
+}
