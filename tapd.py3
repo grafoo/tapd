@@ -417,6 +417,8 @@ def main():
         Gst.init(None)
         loop = GLib.MainLoop()
         player = Gst.ElementFactory.make('playbin', None)
+        player.set_property('audio-sink',
+                            Gst.ElementFactory.make('pulsesink', None))
         queue = Queue()
         gstreamer = Gstreamer(player, loop, queue)
         threading.Thread(target=gstreamer).start()
