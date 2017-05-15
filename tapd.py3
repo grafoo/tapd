@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import gi
-gi.require_version('Gst', '1.0')
+from gi import require_version
+require_version('Gst', '1.0')
 from gi.repository import Gst, GLib, GObject
 import json
 import sqlite3
