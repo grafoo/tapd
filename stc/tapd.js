@@ -79,8 +79,8 @@ function getPodcasts() {
           newEpisode.appendChild(newDescription);
 
           var newContent = document.createElement('div');
-          newDescription.style.fontWeight = 'normal';
-          newDescription.innerHTML = episode.content;
+          newContent.style.fontWeight = 'normal';
+          newContent.innerHTML = episode.content;
           newEpisode.appendChild(newContent);
 
           newPodcast.appendChild(newEpisode);
