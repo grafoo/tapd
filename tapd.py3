@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import gi; gi.require_version('Gst', '1.0')
+import gi
+gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib, GObject
 import json
 import sqlite3
@@ -63,31 +64,51 @@ class TapdHandler(BaseHTTPRequestHandler):
         stream_uri = item.find('enclosure').get('url')
         if stream_uri is not None: episode['stream_uri'] = stream_uri
 
-        duration = item.find('{http://www.itunes.com/dtds/podcast-1.0.dtd}duration')
+        duration = item.find(
+            '{http://www.itunes.com/dtds/podcast-1.0.dtd}duration')
         if duration is not None: episode['duration'] = duration.text
 
-        content = item.find('{http://purl.org/rss/1.0/modules/content/}encoded')
+        content = item.find(
+            '{http://purl.org/rss/1.0/modules/content/}encoded')
         if content is not None: episode['content'] = content.text
 
         return episode
 
     def get_rss_xml(self, queue, podcast_id, uri, all=False):
         try:
-            request = urllib.request.Request(uri, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36'})
-            xmlroot = ElementTree.fromstring(urllib.request.urlopen(request).read())
-            podcast = {'id': podcast_id, 'title': xmlroot.find('channel/title').text, 'episodes': []}
+            request = urllib.request.Request(
+                uri,
+                headers={
+                    'User-Agent':
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36'
+                })
+            xmlroot = ElementTree.fromstring(
+                urllib.request.urlopen(request).read())
+            podcast = {
+                'id': podcast_id,
+                'title': xmlroot.find('channel/title').text,
+                'episodes': []
+            }
             for item in xmlroot.findall('channel/item'):
                 if all:
                     podcast['episodes'].append(self.get_episode(item))
                 else:
-                    pubdate_notz = ' '.join(item.find('pubDate').text.split(' ')[:-1])
-                    pubdate_diff_now = time.time() - time.mktime(time.strptime(pubdate_notz, '%a, %d %b %Y %X'))
+                    pubdate_notz = ' '.join(
+                        item.find('pubDate').text.split(' ')[:-1])
+                    pubdate_diff_now = time.time() - time.mktime(
+                        time.strptime(pubdate_notz, '%a, %d %b %Y %X'))
                     if pubdate_diff_now / 86400.0 < 30.0:
                         podcast['episodes'].append(self.get_episode(item))
             queue.put(podcast)
-        except: pass
+        except:
+            pass
 
-    def poll_icy_metadata(self, protocol='http', host='', port=80, url='', queue=Queue):
+    def poll_icy_metadata(self,
+                          protocol='http',
+                          host='',
+                          port=80,
+                          url='',
+                          queue=Queue):
         # todo: run this as a permanent thread when radio is playing
         try:
             connection = client.HTTPConnection(host, port=port)
@@ -108,7 +129,12 @@ class TapdHandler(BaseHTTPRequestHandler):
         finally:
             connection.close()
 
-    def get_icy_metadata(self, protocol='http', host='', port=80, url='', queue=Queue):
+    def get_icy_metadata(self,
+                         protocol='http',
+                         host='',
+                         port=80,
+                         url='',
+                         queue=Queue):
         try:
             connection = client.HTTPConnection(host, port=port)
             connection.request('GET', url, headers={'Icy-MetaData': 1})
@@ -138,15 +164,17 @@ class TapdHandler(BaseHTTPRequestHandler):
             cursor = db.cursor()
             protocol, host, port, url = cursor.execute(
                 'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
-                (self.gstreamer.radio_id,)
-            ).fetchone()
+                (self.gstreamer.radio_id, )).fetchone()
             db.close()
             fetcher_queue = Queue()
-            thread = threading.Thread(target=self.get_icy_metadata, args=(protocol, host, port, url, fetcher_queue,))
+            thread = threading.Thread(
+                target=self.get_icy_metadata,
+                args=(protocol, host, port, url, fetcher_queue, ))
             thread.start()
             thread.join()
             return {'title': fetcher_queue.get()}
-        else: return {'title': self.gstreamer.stream_uri}
+        else:
+            return {'title': self.gstreamer.stream_uri}
 
     def do_GET(self):
         path_parsed = urllib.parse.urlparse(self.path)
@@ -162,7 +190,14 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.end_headers()
             db = sqlite3.connect('tapd.db')
             cursor = db.cursor()
-            response = {'radios': [{'id': id, 'name': name} for id, name in cursor.execute('select id, name from radios')]}
+            response = {
+                'radios':
+                [{
+                    'id': id,
+                    'name': name
+                }
+                 for id, name in cursor.execute('select id, name from radios')]
+            }
             db.close()
             self.wfile.write(json.dumps(response).encode('UTF-8'))
         elif self.path == '/podcasts':
@@ -178,21 +213,28 @@ class TapdHandler(BaseHTTPRequestHandler):
 
             threads = []
             for podcast_id, uri in cursor.execute('select id, uri from feeds'):
-                thread = threading.Thread(target=self.get_rss_xml, args=(fetcher_queue, podcast_id, uri,))
+                thread = threading.Thread(
+                    target=self.get_rss_xml,
+                    args=(fetcher_queue, podcast_id, uri, ))
                 threads.append(thread)
                 thread.start()
 
-            for thread in threads: thread.join()
+            for thread in threads:
+                thread.join()
 
             while not fetcher_queue.empty():
                 podcasts.append(fetcher_queue.get())
 
             db.close()
 
-            self.wfile.write(json.dumps({'podcasts': podcasts}).encode('UTF-8'))
+            self.wfile.write(
+                json.dumps({
+                    'podcasts': podcasts
+                }).encode('UTF-8'))
         elif path_parsed.path.split('/')[1] == 'podcast':
             if path_parsed.path.split('/')[2] == 'episodes':
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                query = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query)
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
@@ -201,12 +243,17 @@ class TapdHandler(BaseHTTPRequestHandler):
                 cursor.execute('select uri from feeds where id=?', query['id'])
                 uri = cursor.fetchone()[0]
                 queue = Queue()
-                thread = threading.Thread(target=self.get_rss_xml, args=(queue, query['id'], uri, True))
+                thread = threading.Thread(
+                    target=self.get_rss_xml,
+                    args=(queue, query['id'], uri, True))
                 thread.start()
                 thread.join()
                 podcast = queue.get()
                 db.close()
-                self.wfile.write(json.dumps({'podcast': podcast}).encode('UTF-8'))
+                self.wfile.write(
+                    json.dumps({
+                        'podcast': podcast
+                    }).encode('UTF-8'))
         elif self.path == '/stop':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
@@ -219,35 +266,40 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            current_position = self.gstreamer.player.query_position(Gst.Format.TIME)
+            current_position = self.gstreamer.player.query_position(
+                Gst.Format.TIME)
             duration = self.gstreamer.player.query_duration(Gst.Format.TIME)
             if current_position[0] and duration[0]:
                 new_position = current_position[1] + 30 * Gst.SECOND
                 if new_position < duration[1]:
-                    self.gstreamer.player.seek_simple(Gst.Format.TIME,
-                                                      Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
-                                                      new_position)
+                    self.gstreamer.player.seek_simple(
+                        Gst.Format.TIME,
+                        Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
+                        new_position)
             self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/backward':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            current_position = self.gstreamer.player.query_position(Gst.Format.TIME)
+            current_position = self.gstreamer.player.query_position(
+                Gst.Format.TIME)
             if current_position[0]:
                 new_position = current_position[1] - 30 * Gst.SECOND
                 if new_position < 0:
                     new_position = 0
-                self.gstreamer.player.seek_simple(Gst.Format.TIME,
-                                                  Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
-                                                  new_position)
+                self.gstreamer.player.seek_simple(
+                    Gst.Format.TIME,
+                    Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, new_position)
             self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/pause':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            if self.gstreamer.player.get_state(Gst.CLOCK_TIME_NONE)[1] == Gst.State.PLAYING:
+            if self.gstreamer.player.get_state(
+                    Gst.CLOCK_TIME_NONE)[1] == Gst.State.PLAYING:
                 self.gstreamer.player.set_state(Gst.State.PAUSED)
-            elif self.gstreamer.player.get_state(Gst.CLOCK_TIME_NONE)[1] == Gst.State.PAUSED:
+            elif self.gstreamer.player.get_state(
+                    Gst.CLOCK_TIME_NONE)[1] == Gst.State.PAUSED:
                 self.gstreamer.player.set_state(Gst.State.PLAYING)
             self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/streaminfo':
@@ -255,13 +307,15 @@ class TapdHandler(BaseHTTPRequestHandler):
             if sec_websocket_key is not None:
                 websocket_magic_string = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
                 hash = sha1()
-                foo = '{0}{1}'.format(sec_websocket_key, websocket_magic_string)
+                foo = '{0}{1}'.format(sec_websocket_key,
+                                      websocket_magic_string)
                 hash.update(bytes(foo.encode('UTF-8')))
                 sec_websocket_accept = base64.b64encode(hash.digest())
                 self.send_response(101)
                 self.send_header('Upgrade', 'websocket')
                 self.send_header('Connection', 'Upgrade')
-                self.send_header('Sec-WebSocket-Accept', sec_websocket_accept.decode('UTF-8'))
+                self.send_header('Sec-WebSocket-Accept',
+                                 sec_websocket_accept.decode('UTF-8'))
                 self.end_headers()
                 streaminfo = ''
                 while True:
@@ -294,7 +348,8 @@ class TapdHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps(self.get_streaminfo()).encode('UTF-8'))
+                self.wfile.write(
+                    json.dumps(self.get_streaminfo()).encode('UTF-8'))
 
         else:
             try:
@@ -302,7 +357,8 @@ class TapdHandler(BaseHTTPRequestHandler):
                 if len(mediatype) > 1:
                     if mediatype[-1] in self.mediatypes:
                         self.send_response(200)
-                        self.send_header('Content-Type', self.mediatypes[mediatype[-1]])
+                        self.send_header('Content-Type',
+                                         self.mediatypes[mediatype[-1]])
                         self.end_headers()
                         with open('stc' + self.path, 'rb') as f:
                             self.wfile.write(f.read())
@@ -314,7 +370,8 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            uri = self.rfile.read(int(self.headers.get('Content-Length'))).decode('UTF-8').split('=')[1]
+            uri = self.rfile.read(int(self.headers.get(
+                'Content-Length'))).decode('UTF-8').split('=')[1]
             self.wfile.write(''.encode('UTF-8'))
             self.gstreamer.player.set_property('uri', uri)
             self.gstreamer.player.set_state(Gst.State.PLAYING)
@@ -323,23 +380,28 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            radio_id = int(self.rfile.read(int(self.headers.get('Content-Length'))).decode('UTF-8').split('=')[1])
+            radio_id = int(
+                self.rfile.read(int(self.headers.get('Content-Length')))
+                .decode('UTF-8').split('=')[1])
             self.wfile.write(''.encode('UTF-8'))
             db = sqlite3.connect('tapd.db')
             cursor = db.cursor()
             protocol, host, port, url = cursor.execute(
                 'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
-                (radio_id,)
-            ).fetchone()
+                (radio_id, )).fetchone()
             db.close()
-            self.gstreamer.player.set_property('uri', '{0}://{1}:{2}{3}'.format(protocol, host, port,url))
+            self.gstreamer.player.set_property('uri',
+                                               '{0}://{1}:{2}{3}'.format(
+                                                   protocol, host, port, url))
             self.gstreamer.player.set_state(Gst.State.PLAYING)
             self.gstreamer.radio_id = radio_id
 
-    def log_message(self, format, *args): pass
+    def log_message(self, format, *args):
+        pass
 
 
-def run_httpserver(server): server.serve_forever()
+def run_httpserver(server):
+    server.serve_forever()
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -364,7 +426,7 @@ def main():
 
         httpServer = ThreadedHTTPServer(('localhost', 8000), tapdHandler)
         httpServer.daemon_threads = True
-        threading.Thread(target=run_httpserver, args=(httpServer,)).start()
+        threading.Thread(target=run_httpserver, args=(httpServer, )).start()
 
         while queue.empty():
             time.sleep(1)
@@ -380,5 +442,5 @@ def main():
         httpServer.socket.close()
 
 
-if __name__ == '__main__': main()
-
+if __name__ == '__main__':
+    main()
