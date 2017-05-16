@@ -373,9 +373,11 @@ class TapdHandler(BaseHTTPRequestHandler):
             uri = self.rfile.read(int(self.headers.get(
                 'Content-Length'))).decode('UTF-8').split('=')[1]
             self.wfile.write(''.encode('UTF-8'))
-            self.gstreamer.player.set_property('uri', uri)
-            self.gstreamer.player.set_state(Gst.State.PLAYING)
-            self.gstreamer.stream_uri = uri
+            if self.gstreamer.player.get_property('current-uri') != uri:
+                self.gstreamer.player.set_state(Gst.State.NULL)
+                self.gstreamer.player.set_property('uri', uri)
+                self.gstreamer.player.set_state(Gst.State.PLAYING)
+                self.gstreamer.stream_uri = uri
         elif self.path == '/playradio':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
@@ -390,11 +392,12 @@ class TapdHandler(BaseHTTPRequestHandler):
                 'select stream_protocol, stream_host, stream_port, stream_url from radios where id = ?',
                 (radio_id, )).fetchone()
             db.close()
-            self.gstreamer.player.set_property('uri',
-                                               '{0}://{1}:{2}{3}'.format(
-                                                   protocol, host, port, url))
-            self.gstreamer.player.set_state(Gst.State.PLAYING)
-            self.gstreamer.radio_id = radio_id
+            uri = '{0}://{1}:{2}{3}'.format(protocol, host, port, url)
+            if self.gstreamer.player.get_property('current-uri') != uri:
+                self.gstreamer.player.set_state(Gst.State.NULL)
+                self.gstreamer.player.set_property('uri', uri)
+                self.gstreamer.player.set_state(Gst.State.PLAYING)
+                self.gstreamer.radio_id = radio_id
 
     def log_message(self, format, *args):
         pass
