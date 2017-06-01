@@ -249,6 +249,20 @@ class TapdHandler(BaseHTTPRequestHandler):
                 thread.start()
                 thread.join()
                 podcast = queue.get()
+                for episode in podcast['episodes']:
+                    cursor.execute(
+                        'select id from episodes where url=quote(?)', (
+                            episode['stream_uri'], ))
+                    if not cursor.fetchone():
+                        cursor.execute('insert into episodes(url) values(?)',
+                                       (episode['stream_uri'], ))
+                        id = cursor.execute(
+                            'select last_insert_rowid()').fetchone()[0]
+                        cursor.execute(
+                            'insert into episode_search values(?, ?, ?)',
+                            (id, episode['description'], episode['content'], ))
+                        db.commit()
+                    # url = re.sub(r'[^a-zA-Z0-9]+', ' ', episode['stream_uri'])
                 db.close()
                 self.wfile.write(
                     json.dumps({
@@ -350,7 +364,24 @@ class TapdHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(
                     json.dumps(self.get_streaminfo()).encode('UTF-8'))
-
+        elif self.path.startswith('/search/'):
+            query = urllib.parse.unquote(self.path.split('/')[2])
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            db = sqlite3.connect('tapd.db')
+            cursor = db.cursor()
+            cursor.execute(
+                'select id from episode_search where episode_search match ?', (
+                    query, ))
+            result = '<!DOCTYPE html><body><html>'
+            for id in (id[0] for id in cursor.fetchall()):
+                cursor.execute('select url from episodes where id=?', (id, ))
+                url = cursor.fetchone()[0]
+                result += '%s\n' % url
+            db.close()
+            result += '</body></html>'
+            self.wfile.write(result.encode('UTF-8'))
         else:
             try:
                 mediatype = self.path.split('.')

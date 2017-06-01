@@ -195,6 +195,11 @@ function getAllEpisodes(podcastID) {
         newDescription.innerHTML = episode.description;
         newEpisode.appendChild(newDescription);
 
+        var newContent = document.createElement('div');
+        newContent.style.fontWeight = 'normal';
+        newContent.innerHTML = episode.content;
+        newEpisode.appendChild(newContent);
+
         newPodcast.appendChild(newEpisode);
       }
 

@@ -3,14 +3,27 @@ create table feeds (
   uri text not null
 );
 
+
 -- currently not used; intended for future search feature
+-- create table episodes (
+--   id integer primary key autoincrement,
+--   title text not null,
+--   description text not null,
+--   stream_uri text not null,
+--   duration text not null
+-- );
+
 create table episodes (
   id integer primary key autoincrement,
-  title text not null,
-  description text not null,
-  stream_uri text not null,
-  duration text not null
+  url text not null
 );
+
+create virtual table episode_search using fts4 (
+  id,
+  description,
+  content
+);
+
 
 create table radios (
   id integer primary key autoincrement,
