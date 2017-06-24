@@ -250,19 +250,24 @@ class TapdHandler(BaseHTTPRequestHandler):
                 thread.join()
                 podcast = queue.get()
                 for episode in podcast['episodes']:
-                    cursor.execute(
-                        'select id from episodes where url=quote(?)', (
-                            episode['stream_uri'], ))
-                    if not cursor.fetchone():
-                        cursor.execute('insert into episodes(url) values(?)',
-                                       (episode['stream_uri'], ))
-                        id = cursor.execute(
-                            'select last_insert_rowid()').fetchone()[0]
+                    try:
                         cursor.execute(
-                            'insert into episode_search values(?, ?, ?)',
-                            (id, episode['description'], episode['content'], ))
-                        db.commit()
-                    # url = re.sub(r'[^a-zA-Z0-9]+', ' ', episode['stream_uri'])
+                            'select id from episodes where url=quote(?)', (
+                                episode['stream_uri'], ))
+                        if not cursor.fetchone():
+                            cursor.execute(
+                                'insert into episodes(url) values(?)', (
+                                    episode['stream_uri'], ))
+                            id = cursor.execute(
+                                'select last_insert_rowid()').fetchone()[0]
+                            cursor.execute(
+                                'insert into episode_search values(?, ?, ?)',
+                                (id, episode['description'],
+                                 episode['content'], ))
+                            db.commit()
+                        # url = re.sub(r'[^a-zA-Z0-9]+', ' ', episode['stream_uri'])
+                    except:
+                        pass
                 db.close()
                 self.wfile.write(
                     json.dumps({
@@ -305,6 +310,19 @@ class TapdHandler(BaseHTTPRequestHandler):
                     Gst.Format.TIME,
                     Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, new_position)
             self.wfile.write(''.encode('UTF-8'))
+        elif self.path.startswith('/seek/'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            time_str = urllib.parse.unquote(self.path.split('/')[2])
+            minutes, seconds = time_str.split(':')
+            position = (int(minutes) * 60 + int(seconds)) * Gst.SECOND
+            playing, _ = self.gstreamer.player.query_position(Gst.Format.TIME)
+            if playing:
+                self.gstreamer.player.seek_simple(
+                    Gst.Format.TIME,
+                    Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, position)
+            self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/pause':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
@@ -317,6 +335,11 @@ class TapdHandler(BaseHTTPRequestHandler):
                 self.gstreamer.player.set_state(Gst.State.PLAYING)
             self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/streaminfo':
+            # todo: send current stream position to client (format mm:ss)
+            # playing, position = self.gstreamer.player.query_position(
+            #     Gst.Format.TIME)
+            # minutes, seconds = divmod(position / Gst.SECOND, 60)
+
             sec_websocket_key = self.headers.get('Sec-WebSocket-Key')
             if sec_websocket_key is not None:
                 websocket_magic_string = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
