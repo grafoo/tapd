@@ -478,7 +478,9 @@ class TapdHandler(BaseHTTPRequestHandler):
                 self.gstreamer.player.set_property('uri', uri)
                 self.gstreamer.player.set_state(Gst.State.PLAYING)
                 if position:
-                    time.sleep(0.1)
+                    time.sleep(
+                        0.6
+                    )  # 0.1 is enough for a `i5 M 580` but `ARM Cortex-A7` seems to need 0.6
                     done = self.gstreamer.player.seek_simple(
                         Gst.Format.TIME,
                         Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, position)
