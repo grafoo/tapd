@@ -466,7 +466,7 @@ class TapdHandler(BaseHTTPRequestHandler):
                     db = sqlite3.connect('tapd.db')
                     cursor = db.cursor()
                     cursor.execute('insert into episodes(url) values(?)',
-                                   (self.gstreamer.stream_uri, ))
+                                   (uri, ))
                     db.commit()
                 except sqlite3.IntegrityError as err:
                     cursor.execute(
