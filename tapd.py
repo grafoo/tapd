@@ -41,8 +41,21 @@ class Gstreamer(object):
     def gstreamer_bus_callback(self, bus, message):
         if message.type == Gst.MessageType.EOS:
             self.player.set_state(Gst.State.NULL)
+            self.remove_stream_position()
             self.stream_uri = ''
             self.radio_id = 0
+
+    def remove_stream_position(self):
+        db = sqlite3.connect('tapd.db')
+        cursor = db.cursor()
+        try:
+            cursor.execute('update episodes set position = NULL where url = ?',
+                           (self.stream_uri, ))
+            db.commit()
+        except Exception as err:
+            print(err)
+        finally:
+            db.close()
 
 
 class TapdHandler(BaseHTTPRequestHandler):
@@ -278,6 +291,7 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
             self.gstreamer.player.set_state(Gst.State.NULL)
+            self.gstreamer.remove_stream_position()
             self.gstreamer.stream_uri = ''
             self.gstreamer.radio_id = 0
             self.wfile.write('stopped.'.encode('UTF-8'))
@@ -327,12 +341,31 @@ class TapdHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            if self.gstreamer.player.get_state(
-                    Gst.CLOCK_TIME_NONE)[1] == Gst.State.PLAYING:
+            # get_state is a blocking call
+            # with Gst.CLOCK_TIME_NONE the call will not timeout
+            # todo: change this to timeout and add error handling
+            # get_state returns a _ResultTuple like
+            #     (<enum GST_STATE_CHANGE_SUCCESS of type Gst.StateChangeReturn>,
+            #      state=<enum GST_STATE_PLAYING of type Gst.State>,
+            #      pending=<enum GST_STATE_VOID_PENDING of type Gst.State>)
+            # when the state is playing or
+            #     (<enum GST_STATE_CHANGE_SUCCESS of type Gst.StateChangeReturn>,
+            #      state=<enum GST_STATE_PAUSED of type Gst.State>,
+            #      pending=<enum GST_STATE_VOID_PENDING of type Gst.State>)
+            # when the sate is paused.
+
+            _, state, _ = self.gstreamer.player.get_state(Gst.CLOCK_TIME_NONE)
+            db = sqlite3.connect('tapd.db')
+            if state == Gst.State.PLAYING:
                 self.gstreamer.player.set_state(Gst.State.PAUSED)
-            elif self.gstreamer.player.get_state(
-                    Gst.CLOCK_TIME_NONE)[1] == Gst.State.PAUSED:
-                self.gstreamer.player.set_state(Gst.State.PLAYING)
+                _, position = self.gstreamer.player.query_position(
+                    Gst.Format.TIME)
+                cursor = db.cursor()
+                cursor.execute(
+                    'update episodes set position = ? where url = ?', (
+                        position, self.gstreamer.stream_uri, ))
+                db.commit()
+            db.close()
             self.wfile.write(''.encode('UTF-8'))
         elif self.path == '/streaminfo':
             # todo: send current stream position to client (format mm:ss)
@@ -428,10 +461,31 @@ class TapdHandler(BaseHTTPRequestHandler):
                 'Content-Length'))).decode('UTF-8').split('=')[1]
             self.wfile.write(''.encode('UTF-8'))
             if self.gstreamer.player.get_property('current-uri') != uri:
+                position = None
+                try:
+                    db = sqlite3.connect('tapd.db')
+                    cursor = db.cursor()
+                    cursor.execute('insert into episodes(url) values(?)',
+                                   (self.gstreamer.stream_uri, ))
+                    db.commit()
+                except sqlite3.IntegrityError as err:
+                    cursor.execute(
+                        'select position from episodes where url = ?', (uri, ))
+                    position = cursor.fetchone()[0]
+                finally:
+                    db.close()
                 self.gstreamer.player.set_state(Gst.State.NULL)
                 self.gstreamer.player.set_property('uri', uri)
                 self.gstreamer.player.set_state(Gst.State.PLAYING)
+                if position:
+                    time.sleep(0.1)
+                    done = self.gstreamer.player.seek_simple(
+                        Gst.Format.TIME,
+                        Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, position)
+                    if not done:
+                        print('seek from paused position failed.')
                 self.gstreamer.stream_uri = uri
+
         elif self.path == '/playradio':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')

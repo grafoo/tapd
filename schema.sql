@@ -1,6 +1,7 @@
-create table feeds (
+create table if not exists feeds (
   id integer primary key autoincrement,
-  uri text not null
+  uri text not null,
+  lastmodified text
 );
 
 
@@ -13,9 +14,10 @@ create table feeds (
 --   duration text not null
 -- );
 
-create table episodes (
+create table if not exists episodes (
   id integer primary key autoincrement,
-  url text not null
+  url text unique not null,
+  position integer
 );
 
 create virtual table episode_search using fts4 (
@@ -25,7 +27,7 @@ create virtual table episode_search using fts4 (
 );
 
 
-create table radios (
+create table if not exists radios (
   id integer primary key autoincrement,
   name text not null,
   url text not null,
