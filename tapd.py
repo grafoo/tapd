@@ -69,23 +69,34 @@ class TapdHandler(BaseHTTPRequestHandler):
     gstreamer = Gstreamer
 
     def get_episode(self, item):
-        episode = {'title': item.find('title').text}
+        try:
+            episode = {'title': item.find('title').text}
 
-        description = item.find('description')
-        if description is not None: episode['description'] = description.text
+            description = item.find('description')
+            if description is not None:
+                episode['description'] = description.text
+            else:
+                episode['description'] = None
 
-        stream_uri = item.find('enclosure').get('url')
-        if stream_uri is not None: episode['stream_uri'] = stream_uri
+            stream_uri = item.find('enclosure').get('url')
+            episode['stream_uri'] = stream_uri if stream_uri else None
 
-        duration = item.find(
-            '{http://www.itunes.com/dtds/podcast-1.0.dtd}duration')
-        if duration is not None: episode['duration'] = duration.text
+            duration = item.find(
+                '{http://www.itunes.com/dtds/podcast-1.0.dtd}duration')
+            if duration is not None:
+                episode['duration'] = duration.text
+            else:
+                episode['duration'] = None
 
-        content = item.find(
-            '{http://purl.org/rss/1.0/modules/content/}encoded')
-        if content is not None: episode['content'] = content.text
-
-        return episode
+            content = item.find(
+                '{http://purl.org/rss/1.0/modules/content/}encoded')
+            if content is not None:
+                episode['content'] = content.text
+            else:
+                episode['content'] = None
+            return episode
+        except Exception as err:
+            print(err)
 
     def get_rss_xml(self, queue, podcast_id, uri, all=False):
         try:
@@ -271,16 +282,17 @@ class TapdHandler(BaseHTTPRequestHandler):
                             cursor.execute(
                                 'insert into episodes(url) values(?)', (
                                     episode['stream_uri'], ))
-                            id = cursor.execute(
+                            id_ = cursor.execute(
                                 'select last_insert_rowid()').fetchone()[0]
                             cursor.execute(
                                 'insert into episode_search values(?, ?, ?)',
-                                (id, episode['description'],
+                                (id_, episode['description'],
                                  episode['content'], ))
                             db.commit()
                         # url = re.sub(r'[^a-zA-Z0-9]+', ' ', episode['stream_uri'])
-                    except:
-                        pass
+                    except Exception as err:
+                        if type(err) is not sqlite3.IntegrityError:
+                            print('[ERROR]', type(err), err)
                 db.close()
                 self.wfile.write(
                     json.dumps({
