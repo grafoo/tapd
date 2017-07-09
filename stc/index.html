@@ -1,34 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="stylesheet" type="text/css" href="tapd.css">
-  <script src="tapd.js"></script>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet"
+        type="text/css"
+        href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.99.0/css/materialize.min.css"
+        media="screen,projection">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 
 <body onLoad="init();">
-  <h1 onclick="toggleRadios();">&#187; Radios</h1>
-  <ul id="radios" class="hidden"></ul>
+  <div class="container">
+    <div class="row">
+      <div class="col s12">
+        <ul class="tabs">
+          <li class="tab col s6"><a href="#radio-tab">radios</a></li>
+          <li class="tab col s6"><a href="#podcast-tab">podcasts</a></li>
+        </ul>
+        <div id="radio-tab" class="col s12">
+          <div id="radios" class="collection"></div>
+        </div>
+        <div id="podcast-tab" class="col s12">
+          <div id="podcast-links" class="collection"></div>
+        </div>
+      </div>
+    </div>
 
-  <div id="podcasts"></div>
+    <div class="fixed-action-btn click-to-toggle">
+      <a class="btn-floating btn-large transparent">&#9776;</a>
+      <ul>
+        <li>
+          <a class="btn-floating waves-effect" onclick="backward();">
+            <i class="material-icons">&#xe05a;</i>
+          </a>
+        </li>
+        <li>
+          <a class="btn-floating waves-effect" onclick="play();">
+            <i class="material-icons">&#xe037;</i>
+          </a>
+        </li>
+        <li>
+          <a class="btn-floating waves-effect" onclick="pause();">
+            <i class="material-icons">&#xe034;</i>
+          </a>
+        </li>
+        <li>
+          <a class="btn-floating waves-effect" onclick="stop();">
+            <i class="material-icons">&#xe047;</i>
+          </a>
+        </li>
+        <li>
+          <a class="btn-floating waves-effect" onclick="forward();">
+            <i class="material-icons">&#xe057;</i>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
 
-  <div id="menu-button" onclick="toggleMenu();">&#8857;</div>
-  <ul id="menu-items" class="hidden">
-    <li>
-      <img class="audio-button" src="backward.svg" onclick="backward();"/>
-      <img class="audio-button" src="play.svg" onclick="play();"/>
-      <img class="audio-button" src="pause.svg" onclick="pause();"/>
-      <img class="audio-button" src="stop.svg" onclick="stop();"/>
-      <img class="audio-button" src="forward.svg" onclick="forward();"/>
-    </li>
-    <li>
-      <label for="uri">stream uri</label>
-      <input id="uri" type="text"/>
-    </li>
-    <li>
-      <label for="now-playing">now playing</label>
-      <input id="now-playing" type="text" readonly/>
-    </li>
-  </ul>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.99.0/js/materialize.min.js"></script>
+  <script src="tapd.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 function init() {
   getRadios();
   getPodcasts();
-  updateStreamTitle();
+  // updateStreamTitle();
 }
 
 function updateStreamTitle() {
@@ -34,11 +34,10 @@ function getRadios() {
     if (xhr.readyState === XMLHttpRequest.DONE) {
       var radios = document.getElementById('radios');
       for (radio of xhr.response.radios) {
-        var newRadio = document.createElement('li');
-        var newPlayRadio = document.createElement('a');
-        newPlayRadio.href = 'javascript:playradio("' + radio.id + '");';
-        newPlayRadio.innerHTML = radio.name;
-        newRadio.appendChild(newPlayRadio);
+        var newRadio = document.createElement('a');
+        newRadio.classList.add('collection-item');
+        newRadio.href = 'javascript:playradio("' + radio.id + '");';
+        newRadio.innerHTML = radio.name + '<i class="material-icons right">&#xe037;</i>';
         radios.appendChild(newRadio);
       }
     }
@@ -52,47 +51,69 @@ function getPodcasts() {
   xhr.open('GET', '/podcasts', true);
   xhr.onreadystatechange = function() {
     if (xhr.readyState === XMLHttpRequest.DONE) {
-      var podcasts = document.getElementById('podcasts');
+      var podcastTab = document.getElementById('podcast-tab');
+      var podcastLinks = document.getElementById('podcast-links');
       for (podcast of xhr.response.podcasts) {
-        var newPodcast = document.createElement('div');
-        newPodcast.id = "podcast-" + podcast.id;
-        var newPodcastName = document.createElement('h1');
-        newPodcastName.innerHTML = podcast.title;
-        newPodcast.appendChild(newPodcastName);
+        var newPodcast = document.createElement('ul');
+        newPodcast.classList.add('collapsible');
+        newPodcast.setAttribute('data-collapsible', 'accordion');
+        newPodcast.id = 'podcast-' + podcast.id;
+
+        var newPodcastLabel = document.createElement('label');
+        newPodcastLabel.id = 'podcast-label-' + podcast.id;
+        newPodcastLabel.htmlFor = 'podcast-' + podcast.id;
+        newPodcastLabel.innerHTML = podcast.title;
+
+        podcastTab.appendChild(newPodcastLabel);
+
+        podcastTab.appendChild(newPodcast);
+
+        var newPodcastLink = document.createElement('a');
+        newPodcastLink.classList.add('collection-item');
+        newPodcastLink.href = '#podcast-label-' + podcast.id;
+        newPodcastLink.innerHTML = '<i class="material-icons left">link</i> ' + podcast.title;
+        podcastLinks.appendChild(newPodcastLink);
 
         for (episode of podcast.episodes) {
-          var newEpisode = document.createElement('DETAILS');
-          var episodeSummary = document.createElement('SUMMARY');
-          var episodeTitle = document.createElement('span');
-          episodeTitle.innerHTML = episode.title + '  >>' + ' [ ' + episode.duration + ' ] ';
-          episodeSummary.appendChild(episodeTitle);
-          newEpisode.appendChild(episodeSummary);
-
-          var newPlayEpisode = document.createElement('a');
-          newPlayEpisode.href = 'javascript:play("' + episode.stream_uri + '");';
-          newPlayEpisode.innerHTML = 'PLAY';
-          episodeSummary.appendChild(newPlayEpisode);
-
-          var newDescription = document.createElement('div');
-          newDescription.style.fontWeight = 'normal';
-          newDescription.innerHTML = episode.description;
-          newEpisode.appendChild(newDescription);
-
-          var newContent = document.createElement('div');
-          newContent.style.fontWeight = 'normal';
-          newContent.innerHTML = episode.content;
-          newEpisode.appendChild(newContent);
-
+          var newEpisode = document.createElement('li');
+          var newEpisodeHeader = document.createElement('div');
+          newEpisodeHeader.classList.add('collapsible-header');
+          newEpisodeHeader.innerHTML = episode.title;
+          if(episode.duration) {
+            var newEpisodeDuration = document.createElement('span');
+            newEpisodeDuration.setAttribute('class', 'badge');
+            newEpisodeDuration.innerHTML = '&#x23F2; ' + episode.duration;
+            newEpisodeHeader.appendChild(newEpisodeDuration);
+          }
+          newEpisode.appendChild(newEpisodeHeader);
+          var newEpisodeBody = document.createElement('div');
+          newEpisodeBody.classList.add('collapsible-body');
+          var newEpisodePlayButton = document.createElement('a')
+          newEpisodePlayButton.href = 'javascript:play("' + episode.stream_uri + '");';
+          newEpisodePlayButton.innerHTML = 'play';
+          newEpisodePlayButton.setAttribute('class', 'btn right');
+          newEpisodeBody.appendChild(newEpisodePlayButton);
+          var newEpisodeDescription = document.createElement('div');
+          newEpisodeDescription.innerHTML = episode.description;
+          newEpisodeBody.appendChild(newEpisodeDescription);
+          var newEpisodeContent = document.createElement('div');
+          newEpisodeContent.innerHTML = episode.content;
+          newEpisodeBody.appendChild(newEpisodeContent);
+          newEpisode.appendChild(newEpisodeBody);
           newPodcast.appendChild(newEpisode);
         }
 
-        var newGetAllEpisodes = document.createElement('a');
-        newGetAllEpisodes.href = 'javascript:getAllEpisodes(' + podcast.id + ');';
-        newGetAllEpisodes.innerHTML = 'LOAD ALL';
-        newPodcast.appendChild(newGetAllEpisodes);
-
-        podcasts.appendChild(newPodcast);
+        var newRow = document.createElement('div');
+        newRow.setAttribute('class', 'row');
+        var newGetAllEpisodesButton = document.createElement('a');
+        newGetAllEpisodesButton.href = 'javascript:getAllEpisodes(' + podcast.id + ');';
+        newGetAllEpisodesButton.innerHTML = 'load all';
+        newGetAllEpisodesButton.setAttribute('class', 'btn right');
+        newRow.appendChild(newGetAllEpisodesButton);
+        podcastTab.appendChild(newRow);
       }
+
+      $('.collapsible').collapsible();
     }
   };
   xhr.send();
