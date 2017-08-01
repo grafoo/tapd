@@ -166,14 +166,20 @@ class TapdHandler(BaseHTTPRequestHandler):
             headers = dict(response.getheaders())
             if 'icy-metaint' in headers.keys():
                 metaint = int(headers['icy-metaint'])
-                pattern = re.compile(r"StreamTitle='(.+)';")
                 metalen = response.read(metaint + 1)[-1]
                 if metalen > 0:
+                    # metadata looks like StreamTitle='<some title>';StreamUrl='<some url>';
                     metadata = response.read(metalen * 16).decode('utf-8')
-                    match = pattern.match(metadata)
-                    if match:
-                        stream_title = match.group(1)
-                        queue.put(stream_title)
+                    result = {}
+                    for part in metadata.split(';'):
+                        if len(part) != len(part.split('\x00')) - 1:
+                            key, val = part.split('=')
+                            if key == 'StreamTitle':
+                                key = 'title'
+                                result['title'] = val[1:-1].strip()
+                            elif key == 'StreamUrl':
+                                result['url'] = val[1:-1].strip()
+                    queue.put(result)
             else:
                 queue.put('no icy metadata')
         except Exception as e:
@@ -196,7 +202,7 @@ class TapdHandler(BaseHTTPRequestHandler):
                 args=(protocol, host, port, url, fetcher_queue, ))
             thread.start()
             thread.join()
-            return {'title': fetcher_queue.get()}
+            return fetcher_queue.get()
         else:
             return {'title': self.gstreamer.stream_uri}
 
